@@ -11,6 +11,7 @@
 import { POPULAR_TOURING_CITIES, POPULAR_GENRE_CITY_ROUTES } from "./venueSeoRoutes";
 import { MUSIC_VENUES } from "../data/venues";
 import { TOUR_ARTICLES } from "../data/tourArticles";
+import { fetchAllHeyCatchArticles } from "./heycatchBlog";
 
 export interface SitemapEntry {
   url: string;
@@ -238,6 +239,14 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
     });
   });
 
+  // 6. HeyCatch Blog Hub
+  entries.push({
+    url: "https://www.giglizard.us/blog",
+    lastmod: today,
+    changefreq: "daily",
+    priority: "0.85"
+  });
+
   // 5. Popular Genre Hubs (e.g. /venues/rock, /venues/punk)
   for (const genre of PRIMARY_GENRES) {
     entries.push({
@@ -430,6 +439,26 @@ export async function generateDynamicSupabaseSitemap(supabaseClient?: any): Prom
           });
         }
       }
+    }
+
+    // Dynamic HeyCatch Blog Articles (/blog/{slug})
+    try {
+      const blogData = await fetchAllHeyCatchArticles();
+      if (blogData && blogData.articles && blogData.articles.length > 0) {
+        blogData.articles.forEach(article => {
+          if (article.slug) {
+            const articleUrl = `https://www.giglizard.us/blog/${article.slug}`;
+            entries.push({
+              url: articleUrl,
+              lastmod: article.updated || article.published || today,
+              changefreq: "weekly",
+              priority: "0.80"
+            });
+          }
+        });
+      }
+    } catch (blogErr) {
+      console.warn("Could not load HeyCatch articles for sitemap:", blogErr);
     }
   } catch (err) {
     console.error("Error generating dynamic Supabase sitemap:", err);

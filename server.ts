@@ -13,6 +13,13 @@ import { resolveBandAgency } from "./src/utils/bookingAgencies";
 import { parseProgrammaticVenuePath } from "./src/utils/venueSeoRoutes";
 import { generateSitemapXml, generateDynamicSupabaseSitemap } from "./src/utils/sitemapGenerator";
 import { TOUR_ARTICLES, getArticleBySlug, getRelatedArticles } from "./src/data/tourArticles";
+import { 
+  fetchAllHeyCatchArticles, 
+  fetchHeyCatchArticleBySlug, 
+  sanitizeArticleHtml, 
+  extractTocFromHtml,
+  injectTocIntoArticle 
+} from "./src/utils/heycatchBlog";
 
 dotenv.config();
 
@@ -1870,6 +1877,13 @@ const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     heading: "Tour Advice, Studio Recording & Merch Strategy (20 Master Guides)",
     subhead: "Believable, real-world road and studio guides written by touring musicians and veteran sound engineers."
   },
+  "/blog": {
+    title: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
+    description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
+    canonical: "https://www.giglizard.us/blog",
+    heading: "GigLizard Blog: Tour Advice, Road Wisdom & Venue Strategies",
+    subhead: "Actionable guides, booking tactics, and road wisdom for independent bands and venues across the Lower 48."
+  },
   "/privacy": {
     title: "Privacy Policy | GigLizard",
     description: "GigLizard Privacy Policy: Learn how we protect artist, band, and venue data, and our policies on cookies, third-party advertising, and payment security.",
@@ -2238,15 +2252,26 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
   return "";
 }
 
-function renderHtmlForRoute(rawTemplate: string, reqPath: string): string {
+async function renderHtmlForRoute(rawTemplate: string, reqPath: string): Promise<string> {
   const cleanPath = reqPath.split("?")[0].replace(/\/$/, "") || "/";
   
-  // 1. Check if this is a programmatic venue directory route or tour article route
+  // 1. Check if this is a programmatic venue directory route, tour article route, or HeyCatch blog route
   const prog = cleanPath.startsWith("/venues/") ? parseProgrammaticVenuePath(cleanPath) : null;
   const articleSlug = cleanPath.startsWith("/articles/") ? cleanPath.replace(/^\/articles\//, "") : null;
   const article = articleSlug ? getArticleBySlug(articleSlug) : null;
+
+  const blogSlug = cleanPath.startsWith("/blog/") ? cleanPath.replace(/^\/blog\//, "") : null;
+  const blogArticle = blogSlug ? await fetchHeyCatchArticleBySlug(blogSlug) : null;
   
-  const meta: RouteMetadata = article
+  const meta: RouteMetadata = blogArticle
+    ? {
+        title: `${blogArticle.title} | GigLizard`,
+        description: blogArticle.meta_description || "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
+        canonical: `https://www.giglizard.us/blog/${blogArticle.slug}`,
+        heading: blogArticle.title,
+        subhead: ""
+      }
+    : article
     ? {
         title: article.seoTitle.includes("GigLizard") ? article.seoTitle : `${article.seoTitle} | GigLizard`,
         description: article.metaDescription,
@@ -2585,12 +2610,129 @@ function renderHtmlForRoute(rawTemplate: string, reqPath: string): string {
     }
   }
 
+  // 3. HeyCatch Blog Post & Blog Index SSR rendering
+  if (blogArticle) {
+    html = html.replace(/<meta property="og:type" content=".*?" \/>/s, '<meta property="og:type" content="article" />');
+    if (blogArticle.language) {
+      const lang = blogArticle.language.toLowerCase();
+      const isRtl = ["ar", "he", "fa", "ur"].includes(lang);
+      html = html.replace(/<html lang=".*?"/s, `<html lang="${blogArticle.language}" ${isRtl ? 'dir="rtl"' : ''}`);
+    }
+    if (blogArticle.jsonLd) {
+      html = html.replace(
+        "</head>",
+        `    <script type="application/ld+json">\n${JSON.stringify(blogArticle.jsonLd, null, 2)}\n    </script>\n  </head>`
+      );
+    }
+
+    const sanitized = sanitizeArticleHtml(blogArticle.content_html || "");
+    const toc = extractTocFromHtml(sanitized);
+    const { beforeTocHtml, afterTocHtml } = injectTocIntoArticle(sanitized, toc);
+    let tocHtml = "";
+    if (toc.length >= 2) {
+      tocHtml = `
+        <nav aria-label="Table of contents" style="margin: 24px 0; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <h2 style="font-size: 16px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 12px;">Table of contents</h2>
+          <ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 8px;">
+            ${toc.map(item => `<li><a href="#${item.id}" style="color: #4f46e5; text-decoration: underline; font-size: 14px;">${item.text}</a></li>`).join("")}
+          </ul>
+        </nav>
+      `;
+    }
+    const contentWithToc = `${beforeTocHtml}${tocHtml}${afterTocHtml}`;
+    const pubDate = blogArticle.published ? new Date(blogArticle.published).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }) : "";
+    const blogPostMain = `<main style="padding: 30px 20px; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; color: #1e293b;">
+      <nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
+        <a href="/" style="color: #4f46e5; text-decoration: underline;">Home</a> &gt; 
+        <a href="/blog" style="color: #4f46e5; text-decoration: underline;">Blog</a> &gt; 
+        <span style="color: #1e293b; font-weight: 600;">${blogArticle.title}</span>
+      </nav>
+      <h1 style="font-size: 32px; font-weight: 900; line-height: 1.25; color: #0f172a; margin-bottom: 8px;">${blogArticle.title}</h1>
+      <div style="font-size: 13px; color: #64748b; margin-bottom: 24px; display: flex; gap: 12px; align-items: center;">
+        <span>Published ${pubDate}</span>
+        <span>•</span>
+        <span>${blogArticle.read_time || 3} min read</span>
+      </div>
+      <div class="blog-prose" style="font-size: 16px; line-height: 1.7; color: #334155;">
+        ${contentWithToc}
+      </div>
+      <footer style="margin-top: 40px; padding: 25px 20px; background: #0f172a; color: #94a3b8; font-size: 13px; text-align: center; border-radius: 8px;">
+        <p>
+          <a href="https://www.giglizard.us/about" style="color: #cbd5e1; text-decoration: underline; margin-right: 15px;">About GigLizard</a> · 
+          <a href="https://www.giglizard.us/blog" style="color: #cbd5e1; text-decoration: underline; margin-right: 15px;">All Blog Articles</a> · 
+          <a href="https://www.giglizard.us/contact" style="color: #cbd5e1; text-decoration: underline;">Contact</a>
+        </p>
+        <p style="margin-top: 10px; font-size: 11px; color: #64748b;">
+          © 2026 GigLizard • Built in Portland, Oregon by Little Rusty for independent touring musicians and venues across the Lower 48.
+        </p>
+      </footer>
+    </main>`;
+    html = html.replace(/<main style="padding: 30px.*?<\/main>/s, blogPostMain);
+  } else if (cleanPath === "/blog") {
+    const blogData = await fetchAllHeyCatchArticles();
+    let blogListHtml = `
+      <nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
+        <a href="/" style="color: #4f46e5; text-decoration: underline;">Home</a> &gt; 
+        <span style="color: #1e293b; font-weight: 600;">Blog</span>
+      </nav>
+      <h1 style="font-size: 32px; font-weight: 800; color: #0f172a; margin-bottom: 8px;">GigLizard Blog</h1>
+      <p style="font-size: 16px; color: #64748b; margin-bottom: 24px;">Touring strategies, venue insights &amp; road wisdom.</p>
+    `;
+    if (!blogData.articles || blogData.articles.length === 0) {
+      blogListHtml += `
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 40px; text-align: center; color: #64748b;">
+          <p style="font-size: 18px; font-weight: 600; color: #334155;">No articles yet</p>
+          <p style="font-size: 14px; margin-top: 8px;">Articles are published periodically. Check back soon for independent touring insights.</p>
+        </div>
+      `;
+    } else {
+      blogListHtml += `<ul style="list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 16px;">`;
+      for (const a of blogData.articles) {
+        const dateStr = a.published ? new Date(a.published).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+        blogListHtml += `
+          <li style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;">
+            <h2 style="font-size: 20px; font-weight: 700; margin: 0 0 8px;">
+              <a href="/blog/${a.slug}" style="color: #0f172a; text-decoration: none;">${a.title}</a>
+            </h2>
+            <div style="font-size: 13px; color: #64748b; display: flex; gap: 12px;">
+              <span>${dateStr}</span>
+              <span>•</span>
+              <span>${a.read_time || 3} min read</span>
+            </div>
+          </li>
+        `;
+      }
+      blogListHtml += `</ul>`;
+    }
+
+    const blogIndexMain = `<main style="padding: 30px 20px; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 900px; margin: 0 auto; color: #1e293b;">
+      ${blogListHtml}
+      <footer style="margin-top: 40px; padding: 25px 20px; background: #0f172a; color: #94a3b8; font-size: 13px; text-align: center; border-radius: 8px;">
+        <p>
+          <a href="https://www.giglizard.us/about" style="color: #cbd5e1; text-decoration: underline; margin-right: 15px;">About GigLizard</a> · 
+          <a href="https://www.giglizard.us/contact" style="color: #cbd5e1; text-decoration: underline;">Contact</a> · 
+          <a href="mailto:hello@giglizard.us" style="color: #cbd5e1; text-decoration: underline;">Email</a>
+        </p>
+        <p style="margin-top: 10px; font-size: 11px; color: #64748b;">
+          © 2026 GigLizard • Built in Portland, Oregon by Little Rusty for independent touring musicians and venues across the Lower 48.
+        </p>
+      </footer>
+    </main>`;
+    html = html.replace(/<main style="padding: 30px.*?<\/main>/s, blogIndexMain);
+  }
+
   return html;
 }
 
 // Route existence validator for soft-404 defense (t_soft404)
-function isValidRoute(cleanPath: string): boolean {
+async function isValidRoute(cleanPath: string): Promise<boolean> {
   if (cleanPath === "/" || cleanPath === "") return true;
+  if (cleanPath === "/blog") return true;
+  if (cleanPath.startsWith("/blog/")) {
+    const slug = cleanPath.replace(/^\/blog\//, "");
+    const article = await fetchHeyCatchArticleBySlug(slug);
+    return !!article;
+  }
   if (ROUTE_METADATA_MAP[cleanPath]) return true;
   if (cleanPath.startsWith("/articles/")) {
     const slug = cleanPath.replace(/^\/articles\//, "");
@@ -2681,13 +2823,13 @@ async function startServer() {
       }
 
       const cleanPath = req.path.replace(/\/$/, "") || "/";
-      if (!isValidRoute(cleanPath)) {
+      if (!(await isValidRoute(cleanPath))) {
         return res.status(404).set({ "Content-Type": "text/html" }).send(render404Page());
       }
 
       try {
         const template = fs.readFileSync(path.resolve("index.html"), "utf-8");
-        const customHtml = renderHtmlForRoute(template, req.path);
+        const customHtml = await renderHtmlForRoute(template, req.path);
         const transformedHtml = await vite.transformIndexHtml(req.originalUrl, customHtml);
         res.status(200).set({ "Content-Type": "text/html" }).end(transformedHtml);
       } catch (e) {
@@ -2700,16 +2842,16 @@ async function startServer() {
     console.log("Starting in production mode...");
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath, { index: false }));
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
       const cleanPath = req.path.replace(/\/$/, "") || "/";
-      if (!isValidRoute(cleanPath)) {
+      if (!(await isValidRoute(cleanPath))) {
         return res.status(404).set({ "Content-Type": "text/html" }).send(render404Page());
       }
 
       const templatePath = path.join(distPath, "index.html");
       if (fs.existsSync(templatePath)) {
         const template = fs.readFileSync(templatePath, "utf-8");
-        const finalHtml = renderHtmlForRoute(template, req.path);
+        const finalHtml = await renderHtmlForRoute(template, req.path);
         res.status(200).set({ "Content-Type": "text/html" }).end(finalHtml);
       } else {
         res.sendFile(templatePath);

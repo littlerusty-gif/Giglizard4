@@ -30,9 +30,12 @@ import { CustomersPage } from "./components/CustomersPage";
 import VerificationPage from "./components/VerificationPage";
 import TourAdviceHub from "./components/TourAdviceHub";
 import TourArticlePage from "./components/TourArticlePage";
+import BlogIndex from "./components/BlogIndex";
+import BlogPost from "./components/BlogPost";
 import PrivacyPolicyPage from "./components/PrivacyPolicyPage";
 import ContactPage from "./components/ContactPage";
 import { TOUR_ARTICLES, getArticleBySlug } from "./data/tourArticles";
+import { fetchAllHeyCatchArticles, HEYCATCH_API_KEY } from "./utils/heycatchBlog";
 import Footer from "./components/Footer";
 import gigLizardLogo from "./assets/images/giglizard_logo_hd.png";
 import { recordLiveVisit } from "./utils/analyticsStore";
@@ -73,8 +76,8 @@ const INITIAL_RIDER_INPUTS = [
 
 export default function GigLizardApp() {
   const { venueCountStr, bandCountStr } = useDirectoryCounts();
-  type TabType = "home" | "venues" | "plot" | "rider" | "poster" | "advisor" | "bands" | "tour" | "pricing" | "admin" | "compare" | "about" | "features" | "guide" | "changelog" | "customers" | "verification" | "articles" | "privacy" | "contact";
-  const validTabs: TabType[] = ["home", "venues", "plot", "rider", "poster", "advisor", "bands", "tour", "pricing", "admin", "compare", "about", "features", "guide", "changelog", "customers", "verification", "articles", "privacy", "contact"];
+  type TabType = "home" | "venues" | "plot" | "rider" | "poster" | "advisor" | "bands" | "tour" | "pricing" | "admin" | "compare" | "about" | "features" | "guide" | "changelog" | "customers" | "verification" | "articles" | "blog" | "privacy" | "contact";
+  const validTabs: TabType[] = ["home", "venues", "plot", "rider", "poster", "advisor", "bands", "tour", "pricing", "admin", "compare", "about", "features", "guide", "changelog", "customers", "verification", "articles", "blog", "privacy", "contact"];
 
   // Mobile navigation drawer toggle state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -111,7 +114,30 @@ export default function GigLizardApp() {
     return null;
   };
 
+  const getInitialBlogSlug = (): string | null => {
+    try {
+      const cleanPath = window.location.pathname.toLowerCase().replace(/\/$/, "");
+      if (cleanPath.startsWith("/blog/")) {
+        return cleanPath.replace(/^\/blog\//, "");
+      }
+      const rawHash = window.location.hash.replace("#", "").toLowerCase();
+      if (rawHash.startsWith("blog/")) {
+        return rawHash.replace(/^blog\//, "");
+      }
+    } catch (_) {}
+    return null;
+  };
+
   const [selectedArticleSlug, setSelectedArticleSlug] = useState<string | null>(getInitialArticleSlug);
+  const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(getInitialBlogSlug);
+
+  // HeyCatch blog article count (Guide: Hide "Blog" nav link when total is 0)
+  const [hasBlogArticles, setHasBlogArticles] = useState<boolean>(false);
+  useEffect(() => {
+    fetchAllHeyCatchArticles(HEYCATCH_API_KEY).then(res => {
+      setHasBlogArticles((res.total || 0) > 0 || (res.articles && res.articles.length > 0));
+    }).catch(() => {});
+  }, []);
 
   const isStoredAccountOwner = (): boolean => {
     try {
@@ -504,6 +530,7 @@ export default function GigLizardApp() {
     verification: "/verification",
     advisor: "/faq",
     articles: "/articles",
+    blog: "/blog",
     privacy: "/privacy",
     contact: "/contact",
     admin: "/admin"
@@ -515,6 +542,9 @@ export default function GigLizardApp() {
     }
     if (tab !== "articles") {
       setSelectedArticleSlug(null);
+    }
+    if (tab !== "blog") {
+      setSelectedBlogSlug(null);
     }
     if (tab === "admin" && currentAccount?.contactEmail?.trim().toLowerCase() !== "littlerusty@gmail.com") {
       setActiveTabState("home");
@@ -528,16 +558,36 @@ export default function GigLizardApp() {
     try {
       const targetPath = (tab === "articles" && selectedArticleSlug)
         ? `/articles/${selectedArticleSlug}`
+        : (tab === "blog" && selectedBlogSlug)
+        ? `/blog/${selectedBlogSlug}`
         : (TAB_PATH_MAP[tab] || `/${tab}`);
 
       if (pushToHistory && !isNavigatingViaPopstateRef.current) {
-        window.history.pushState({ tab, slug: selectedArticleSlug }, "", targetPath);
+        window.history.pushState({ tab, slug: selectedArticleSlug, blogSlug: selectedBlogSlug }, "", targetPath);
       } else {
-        window.history.replaceState({ tab, slug: selectedArticleSlug }, "", targetPath);
+        window.history.replaceState({ tab, slug: selectedArticleSlug, blogSlug: selectedBlogSlug }, "", targetPath);
       }
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleSelectBlogArticle = (slug: string) => {
+    setSelectedBlogSlug(slug);
+    setActiveTabState("blog");
+    try {
+      window.history.pushState({ tab: "blog", blogSlug: slug }, "", `/blog/${slug}`);
+    } catch (_) {}
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleNavigateBlogIndex = () => {
+    setSelectedBlogSlug(null);
+    setActiveTabState("blog");
+    try {
+      window.history.pushState({ tab: "blog" }, "", "/blog");
+    } catch (_) {}
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   // Ensure non-owner accounts cannot remain on admin tab
@@ -570,6 +620,7 @@ export default function GigLizardApp() {
       guide: "DIY Tour Playbook - How to Book & Route Live Shows",
       verification: "Directory Verification Log & Freshness Audits | GigLizard",
       articles: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
+      blog: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
       privacy: "GigLizard Privacy Policy - Data Protection & Cookie Disclosures",
       contact: "Contact GigLizard - Direct Founder & Booking Support",
       admin: "Owner Management Dashboard | GigLizard"
@@ -592,6 +643,7 @@ export default function GigLizardApp() {
       guide: "Practical DIY tour playbook for independent musicians: find bookable clubs, pitch talent buyers, coordinate co-bills, and budget van fuel.",
       verification: `Live moderation log and dated verification audits for ${venueCountStr} music venues and ${bandCountStr} active touring bands across the Lower 48.`,
       articles: "10 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.",
+      blog: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
       privacy: "GigLizard Privacy Policy: Learn how we protect artist and venue data, and our policies on cookies, third-party advertising, and payment security.",
       contact: "Contact Little Rusty and the GigLizard team for venue moderation reports, artist support, or direct questions. Direct response within 4 hours.",
       faq: "Frequently asked questions about venue booking inboxes, $9.99 flat band passes, 7-day money-back refunds, and DIY touring tools."
@@ -615,6 +667,7 @@ export default function GigLizardApp() {
       advisor: "https://www.giglizard.us/faq",
       verification: "https://www.giglizard.us/verification",
       articles: "https://www.giglizard.us/articles",
+      blog: "https://www.giglizard.us/blog",
       privacy: "https://www.giglizard.us/privacy",
       contact: "https://www.giglizard.us/contact",
       admin: "https://www.giglizard.us/admin"
@@ -747,6 +800,17 @@ export default function GigLizardApp() {
     }
     if (clean === "rider" || clean === "tech-rider") {
       setActiveTabState("rider");
+      return true;
+    }
+    if (clean.startsWith("blog/")) {
+      const slug = clean.replace(/^blog\//, "");
+      setSelectedBlogSlug(slug);
+      setActiveTabState("blog");
+      return true;
+    }
+    if (clean === "blog") {
+      setSelectedBlogSlug(null);
+      setActiveTabState("blog");
       return true;
     }
     if (clean.startsWith("articles/")) {
@@ -1091,6 +1155,17 @@ export default function GigLizardApp() {
         }
 
         const currentPath = window.location.pathname.toLowerCase().replace(/\/$/, "");
+        if (currentPath.startsWith("/blog/")) {
+          const slug = currentPath.replace(/^\/blog\//, "");
+          setSelectedBlogSlug(slug);
+          setActiveTabState("blog");
+          return;
+        }
+        if (currentPath === "/blog") {
+          setSelectedBlogSlug(null);
+          setActiveTabState("blog");
+          return;
+        }
         if (currentPath.startsWith("/articles/")) {
           const slug = currentPath.replace(/^\/articles\//, "");
           setSelectedArticleSlug(slug);
@@ -1760,6 +1835,22 @@ export default function GigLizardApp() {
                 <span>Tour Advice</span>
               </a>
 
+              {hasBlogArticles && (
+                <a
+                  href="/blog"
+                  onClick={(e) => { e.preventDefault(); setSelectedBlogSlug(null); setActiveTab("blog"); }}
+                  id="tab-btn-blog"
+                  className={`flex items-center justify-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg transition-colors whitespace-nowrap ${
+                    activeTab === "blog"
+                      ? "bg-white text-slate-900 shadow-2xs font-extrabold"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                  <span>Blog</span>
+                </a>
+              )}
+
               <a
                 href="/pricing"
                 onClick={(e) => { e.preventDefault(); setActiveTab("pricing"); }}
@@ -1929,6 +2020,18 @@ export default function GigLizardApp() {
                 <BookOpen className="w-4 h-4 text-emerald-600 shrink-0" />
                 <span>Tour Advice</span>
               </a>
+              {hasBlogArticles && (
+                <a
+                  href="/blog"
+                  onClick={(e) => { e.preventDefault(); setSelectedBlogSlug(null); setActiveTab("blog"); setIsMobileMenuOpen(false); }}
+                  className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold transition-all ${
+                    activeTab === "blog" ? "bg-emerald-50 text-emerald-900 border border-emerald-200 shadow-xs" : "bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200/60"
+                  }`}
+                >
+                  <BookOpen className="w-4 h-4 text-indigo-600 shrink-0" />
+                  <span>Blog</span>
+                </a>
+              )}
               <a
                 href="/pricing"
                 onClick={(e) => { e.preventDefault(); setActiveTab("pricing"); setIsMobileMenuOpen(false); }}
@@ -2419,6 +2522,23 @@ export default function GigLizardApp() {
           </div>
         )}
 
+        {activeTab === "blog" && (
+          <div className="space-y-6" id="view-blog-wrapper">
+            {selectedBlogSlug ? (
+              <BlogPost
+                slug={selectedBlogSlug}
+                onNavigateBlogIndex={handleNavigateBlogIndex}
+                onNavigateHome={() => setActiveTab("home")}
+              />
+            ) : (
+              <BlogIndex
+                onSelectArticle={handleSelectBlogArticle}
+                onNavigateHome={() => setActiveTab("home")}
+              />
+            )}
+          </div>
+        )}
+
         {activeTab === "privacy" && (
           <div className="space-y-6" id="view-privacy-wrapper">
             <PrivacyPolicyPage onSelectTab={setActiveTab} />
@@ -2514,6 +2634,7 @@ export default function GigLizardApp() {
         onOpenVerification={() => setActiveTab("verification")}
         onOpenPrivacy={() => setActiveTab("privacy")}
         onOpenContactPage={() => setActiveTab("contact")}
+        onOpenBlog={handleNavigateBlogIndex}
         onOpenSignIn={handleOpenSignIn}
         userEmail={currentAccount?.contactEmail || currentUser?.email || ""}
         userName={currentAccount?.name || ""}

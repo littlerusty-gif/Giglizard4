@@ -18,6 +18,7 @@ interface FooterProps {
   onOpenVerification?: () => void;
   onOpenPrivacy?: () => void;
   onOpenContactPage?: () => void;
+  onOpenBlog?: () => void;
   onOpenSignIn?: (role?: "Band" | "Venue" | "Sound Engineer" | "Guest") => void;
   userEmail?: string;
   userName?: string;
@@ -39,6 +40,7 @@ export default function Footer({
   onOpenVerification,
   onOpenPrivacy,
   onOpenContactPage,
+  onOpenBlog,
   onOpenSignIn,
   userEmail,
   userName
@@ -227,6 +229,20 @@ export default function Footer({
                   id="footer-btn-changelog"
                 >
                   <span>Changelog</span>
+                </a>
+                <span className="text-slate-700 hidden sm:inline">•</span>
+              </>
+            )}
+
+            {onOpenBlog && (
+              <>
+                <a
+                  href="/blog"
+                  onClick={(e) => { e.preventDefault(); onOpenBlog(); }}
+                  className="text-slate-400 hover:text-indigo-400 hover:underline transition-colors cursor-pointer flex items-center gap-1.5 py-1 px-2 rounded-lg hover:bg-slate-900"
+                  id="footer-btn-blog"
+                >
+                  <span>Blog</span>
                 </a>
                 <span className="text-slate-700 hidden sm:inline">•</span>
               </>

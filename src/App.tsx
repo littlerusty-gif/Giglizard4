@@ -1501,9 +1501,9 @@ export default function GigLizardApp() {
         </div>
       )}
 
-      {/* Visual Workspace Bar Header */}
-      <header className="bg-white border-b border-gray-200/60 sticky top-0 z-50 py-2 sm:py-3 md:py-4 px-3 sm:px-6 md:px-8 w-full" id="main-header">
-        <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-2 sm:gap-4" id="header-inner">
+      {/* Visual Workspace Bar Header (Enforces 15% mobile sticky cap with compact height) */}
+      <header className="bg-white border-b border-gray-200/60 sticky top-0 z-50 py-2 sm:py-3 md:py-4 px-3 sm:px-6 md:px-8 w-full max-h-[64px] sm:max-h-none flex items-center" id="main-header">
+        <div className="max-w-7xl mx-auto flex flex-row items-center justify-between gap-2 sm:gap-4 w-full" id="header-inner">
           
           {/* Logo pinned on the far left */}
           <div className="flex items-center shrink-0" id="logo-row">
@@ -1519,7 +1519,7 @@ export default function GigLizardApp() {
                 alt="GigLizard"
                 width={360}
                 height={96}
-                className="h-10 sm:h-14 md:h-20 lg:h-24 max-w-[140px] sm:max-w-[200px] md:max-w-[320px] lg:max-w-[420px] w-auto object-contain flex-shrink-0 transition-transform group-hover:scale-102"
+                className="h-9 sm:h-12 md:h-16 lg:h-20 max-w-[130px] sm:max-w-[180px] md:max-w-[280px] lg:max-w-[360px] w-auto object-contain flex-shrink-0 transition-transform group-hover:scale-102"
                 referrerPolicy="no-referrer"
                 onError={(e) => {
                   if (e.currentTarget.src !== window.location.origin + "/giglizard_logo.png") {
@@ -1531,27 +1531,27 @@ export default function GigLizardApp() {
             </button>
           </div>
 
-          {/* Mobile Right Controls: Sign In + Claim Pill + Hamburger Menu (< md) */}
+          {/* Mobile Right Controls: Sign In + Claim Pill + Hamburger Menu (< md) with >=44px hitboxes */}
           <div className="flex md:hidden items-center gap-1.5 shrink-0" id="header-mobile-controls">
             {!isAuthenticated ? (
               <button
                 type="button"
                 onClick={() => handleOpenSignIn("Band")}
-                className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-2xs transition-colors shrink-0"
+                className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-2xs transition-colors shrink-0 min-h-[44px] min-w-[44px]"
                 id="header-mobile-signin-btn"
                 title="Sign in as Band, Venue, Sound Engineer, or Guest"
               >
-                <LogIn className="w-3 h-3 text-indigo-200" />
+                <LogIn className="w-3.5 h-3.5 text-indigo-200" />
                 <span>Sign In</span>
               </button>
             ) : (
               <button
                 type="button"
                 onClick={() => setShowEditAccountModal(true)}
-                className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-bold rounded-xl bg-slate-900 text-white shadow-2xs transition-colors shrink-0"
+                className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-bold rounded-xl bg-slate-900 text-white shadow-2xs transition-colors shrink-0 min-h-[44px]"
                 title="Account Settings"
               >
-                <Settings className="w-3 h-3 text-slate-300" />
+                <Settings className="w-3.5 h-3.5 text-slate-300" />
                 <span>Account</span>
               </button>
             )}
@@ -1560,7 +1560,7 @@ export default function GigLizardApp() {
               type="button"
               onClick={() => { setShowArtistRegistrationModal(true); setIsMobileMenuOpen(false); }}
               id="header-claim-band-btn-mobile"
-              className="flex items-center justify-center gap-1 px-2.5 py-1.5 text-[11px] font-black cursor-pointer rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 text-white shadow-xs transition-all active:scale-95 shrink-0"
+              className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-black cursor-pointer rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-indigo-600 text-white shadow-xs transition-all active:scale-95 shrink-0 min-h-[44px]"
               title="Claim or submit your band"
             >
               <Sparkles className="w-3.5 h-3.5 text-amber-200 shrink-0" />
@@ -1571,7 +1571,7 @@ export default function GigLizardApp() {
               type="button"
               onClick={() => setIsMobileMenuOpen(prev => !prev)}
               aria-label="Toggle Navigation Menu"
-              className="p-1.5 sm:p-2 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200/80 cursor-pointer transition-colors shrink-0"
+              className="p-2 text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-xl border border-slate-200/80 cursor-pointer transition-colors shrink-0 min-h-[44px] min-w-[44px] flex items-center justify-center"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5 text-slate-800" /> : <Menu className="w-5 h-5 text-slate-800" />}
             </button>
@@ -2092,7 +2092,7 @@ export default function GigLizardApp() {
       </header>
 
       {/* Core Tab Workspace Grid */}
-      <main className="flex-grow p-3 sm:p-6 md:p-8 max-w-7xl w-full mx-auto space-y-6 max-w-full overflow-x-hidden" id="main-content-layout">
+      <main className="flex-grow p-3 sm:p-6 md:p-8 pb-24 md:pb-8 max-w-7xl w-full mx-auto space-y-6 max-w-full overflow-x-hidden" id="main-content-layout">
 
         {/* Real-time Toast Feedback Banner */}
         {syncToastMessage && (
@@ -2648,13 +2648,80 @@ export default function GigLizardApp() {
         }}
       />
 
+      {/* Ergonomic Mobile Fixed Bottom Tab Bar (Visible on mobile viewports < md, with 44px+ hitboxes) */}
+      <nav 
+        id="mobile-bottom-tab-bar"
+        aria-label="Mobile Navigation"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/80 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] px-2 py-1.5 flex items-center justify-around pb-[max(0.5rem,env(safe-area-inset-bottom))]"
+      >
+        <button
+          type="button"
+          onClick={() => { setActiveTab("home"); setIsMobileMenuOpen(false); }}
+          className={`flex flex-col items-center justify-center flex-1 min-h-[44px] min-w-[44px] py-1 px-1 rounded-xl transition-colors cursor-pointer ${
+            activeTab === "home" ? "text-indigo-600 font-black" : "text-slate-500 hover:text-slate-900"
+          }`}
+          title="Home"
+        >
+          <Music className={`w-5 h-5 ${activeTab === "home" ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+          <span className="text-[10px] tracking-tight mt-0.5">Home</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setActiveTab("venues"); setIsMobileMenuOpen(false); }}
+          className={`flex flex-col items-center justify-center flex-1 min-h-[44px] min-w-[44px] py-1 px-1 rounded-xl transition-colors cursor-pointer ${
+            activeTab === "venues" ? "text-indigo-600 font-black" : "text-slate-500 hover:text-slate-900"
+          }`}
+          title="Venues Directory"
+        >
+          <MapPin className={`w-5 h-5 ${activeTab === "venues" ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+          <span className="text-[10px] tracking-tight mt-0.5">Venues</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setActiveTab("bands"); setIsMobileMenuOpen(false); }}
+          className={`flex flex-col items-center justify-center flex-1 min-h-[44px] min-w-[44px] py-1 px-1 rounded-xl transition-colors cursor-pointer ${
+            activeTab === "bands" ? "text-amber-600 font-black" : "text-slate-500 hover:text-slate-900"
+          }`}
+          title="Bands Directory"
+        >
+          <Users className={`w-5 h-5 ${activeTab === "bands" ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+          <span className="text-[10px] tracking-tight mt-0.5">Bands</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => { setActiveTab("plot"); setIsMobileMenuOpen(false); }}
+          className={`flex flex-col items-center justify-center flex-1 min-h-[44px] min-w-[44px] py-1 px-1 rounded-xl transition-colors cursor-pointer ${
+            activeTab === "plot" || activeTab === "rider" ? "text-indigo-600 font-black" : "text-slate-500 hover:text-slate-900"
+          }`}
+          title="Stage Plot & Tech Rider Tools"
+        >
+          <Sliders className={`w-5 h-5 ${activeTab === "plot" || activeTab === "rider" ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+          <span className="text-[10px] tracking-tight mt-0.5">Tools</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsMobileMenuOpen(prev => !prev)}
+          className={`flex flex-col items-center justify-center flex-1 min-h-[44px] min-w-[44px] py-1 px-1 rounded-xl transition-colors cursor-pointer ${
+            isMobileMenuOpen ? "text-indigo-600 font-black" : "text-slate-500 hover:text-slate-900"
+          }`}
+          title="More Options"
+        >
+          <Menu className={`w-5 h-5 ${isMobileMenuOpen ? "stroke-[2.5]" : "stroke-[1.75]"}`} />
+          <span className="text-[10px] tracking-tight mt-0.5">More</span>
+        </button>
+      </nav>
+
       {/* Android Back Button Double-Tap Exit Toast */}
       {showExitToast && (
         <div 
           id="android-back-exit-toast"
           role="status"
           aria-live="polite"
-          className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2.5 bg-slate-900/95 text-slate-100 text-xs font-semibold rounded-full shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 pointer-events-none transition-all"
+          className="fixed bottom-20 md:bottom-10 left-1/2 -translate-x-1/2 z-[10000] px-4 py-2.5 bg-slate-900/95 text-slate-100 text-xs font-semibold rounded-full shadow-2xl border border-slate-700/80 backdrop-blur-md flex items-center gap-2 pointer-events-none transition-all"
         >
           <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
           <span>Press back again to exit GigLizard</span>

@@ -1007,25 +1007,28 @@ export default function Home({
       )}
 
       {/* Hero Welcome Panel */}
-      <section className="relative overflow-hidden bg-slate-950 text-white rounded-3xl p-4 sm:p-7 md:p-12 lg:p-14 border border-slate-900 shadow-2xl space-y-6 sm:space-y-8" id="home-hero-panel">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-center">
-          <div className="lg:col-span-7 space-y-4 sm:space-y-5 text-center lg:text-left">
-            <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-semibold uppercase tracking-wider justify-center lg:justify-start">
-              <span>Independent Touring Directory</span>
-              <span aria-hidden="true">·</span>
-              <span>{venueCountStr} Venues Across the USA</span>
+      <section className="relative overflow-hidden bg-slate-950 text-white rounded-3xl p-5 sm:p-8 md:p-12 lg:p-14 border border-slate-900 shadow-2xl space-y-6 sm:space-y-8" id="home-hero-panel">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-stretch">
+          <div className="lg:col-span-7 flex flex-col justify-between space-y-5 text-center lg:text-left">
+            <div className="space-y-4">
+              <div className="inline-flex items-center gap-2 text-indigo-400 text-xs font-semibold uppercase tracking-wider justify-center lg:justify-start">
+                <span>Independent Touring Directory</span>
+                <span aria-hidden="true">·</span>
+                <span>{venueCountStr} Venues Across the USA</span>
+              </div>
+
+              {/* H1 Headline optimized with text-wrap balance and responsive clamp scale */}
+              <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.16] text-white [text-wrap:balance]">
+                Independent Bands: Find Venues, Book Shows —{" "}
+                <span className="block sm:inline text-indigo-300 sm:text-slate-350 text-lg sm:text-2xl lg:text-3xl font-extrabold sm:font-bold mt-1.5 sm:mt-0">
+                  4,800+ Bookable Rooms Across the Lower 48
+                </span>
+              </h1>
+
+              <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0 font-normal [text-wrap:pretty]">
+                GigLizard is a free nationwide independent music venue directory and DIY tour booking platform for touring bands, venues, and sound engineers across the Lower 48.
+              </p>
             </div>
-
-            <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.18] text-white">
-              Independent Bands: Find Venues, Book Shows —{" "}
-              <span className="block sm:inline text-indigo-300 sm:text-slate-350 text-lg sm:text-2xl lg:text-3xl font-extrabold sm:font-bold mt-1.5 sm:mt-0">
-                4,800+ Bookable Rooms Across the Lower 48
-              </span>
-            </h1>
-
-            <p className="text-xs sm:text-sm md:text-base text-slate-300 leading-relaxed max-w-xl mx-auto lg:mx-0 font-normal">
-              GigLizard is a free nationwide independent music venue directory and DIY tour booking platform for touring bands, venues, and sound engineers across the Lower 48.
-            </p>
 
             {/* 2x2 Bulleted Feature Chips Grid for ADHD-Friendly Scanning */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-2.5 max-w-xl mx-auto lg:mx-0 text-left pt-0.5">

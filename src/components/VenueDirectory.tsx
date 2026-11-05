@@ -1,0 +1,1442 @@
+import React, { useState, useEffect } from "react";
+import { Venue, UserAccount } from "../types";
+import { MUSIC_VENUES } from "../data/venues";
+import { Search, MapPin, Mail, Phone, Globe, Volume2, Lightbulb, Ticket, Users, AlertTriangle, PlusCircle, Check, Lock, Sparkles, ShieldCheck, ShieldAlert, KeyRound, RefreshCw, Star, MessageSquare, Compass, ArrowRight, X } from "lucide-react";
+import ProtectedContact from "./ProtectedContact";
+import SecurityShieldModal from "./SecurityShieldModal";
+import CaptchaChallenge from "./CaptchaChallenge";
+import RatingStars from "./RatingStars";
+import ReviewsModal from "./ReviewsModal";
+import { getRatingStats } from "../utils/reviewsManager";
+import { sanitizeInputText, escapeRegexSpecial, detectAutomatedBot, checkRapidHarvestingAttempt } from "../utils/antiScrape";
+import { getOwnerVenueEdits, getOwnerDeletedVenueIds, isEmailAlreadyRegistered, normalizeEmail } from "../utils/directoryStore";
+import { 
+  fetchProfiles, 
+  profileToVenue, 
+  getCachedProfiles, 
+  insertProfile, 
+  fetchAllVenuesFromDatabase, 
+  getCachedDatabaseVenues,
+  saveVenueToDatabase,
+  buildVenueCompositeKey,
+  mergeVenuesWithBundled,
+  supabase
+} from "../lib/supabase";
+import { CONTINENTAL_US_STATES } from "../constants/states";
+import { ProgrammaticVenueRoute, POPULAR_TOURING_CITIES, POPULAR_GENRE_CITY_ROUTES, parseProgrammaticVenuePath } from "../utils/venueSeoRoutes";
+import { useDirectoryCounts } from "../utils/directoryCounts";
+import CityVenueDirectory from "./CityVenueDirectory";
+
+interface VenueDirectoryProps {
+  onSelectVenueForPoster: (venue: Venue) => void;
+  selectedVenueId?: string;
+  currentAccount?: UserAccount | null;
+  onTriggerUpgrade?: () => void;
+  programmaticRoute?: ProgrammaticVenueRoute | null;
+  onNavigateProgrammaticRoute?: (route: ProgrammaticVenueRoute | null, url: string) => void;
+}
+
+export default function VenueDirectory({ 
+  onSelectVenueForPoster, 
+  selectedVenueId, 
+  currentAccount, 
+  onTriggerUpgrade,
+  programmaticRoute,
+  onNavigateProgrammaticRoute
+}: VenueDirectoryProps) {
+  const { venueCountStr, bandCountStr } = useDirectoryCounts();
+  const [venues, setVenues] = useState<Venue[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState("All");
+  const [selectedState, setSelectedState] = useState("All");
+  const [selectedCapacity, setSelectedCapacity] = useState("All");
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState("All");
+  const [showAllVenuesExplicitly, setShowAllVenuesExplicitly] = useState(false);
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
+  const [formErrorMsg, setFormErrorMsg] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [honeypotBot, setHoneypotBot] = useState("");
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [reviewModalVenue, setReviewModalVenue] = useState<Venue | null>(null);
+  const [reviewsVersion, setReviewsVersion] = useState(0);
+  const [isBotSuspicious, setIsBotSuspicious] = useState(false);
+  const [botFlags, setBotFlags] = useState<string[]>([]);
+  const [captchaPassed, setCaptchaPassed] = useState(true);
+
+
+  const [form, setForm] = useState({
+    name: "",
+    capacity: 150,
+    address: "",
+    city: "",
+    genres: "",
+    contactEmail: "",
+    contactPhone: "",
+    description: "",
+    website: "",
+    hasPA: true,
+    hasLighting: true
+  });
+
+  // Android back-swipe / back button listener: close active reviews or modals
+  useEffect(() => {
+    const handleBackButton = (e: Event) => {
+      if (reviewModalVenue) {
+        setReviewModalVenue(null);
+        e.preventDefault();
+        return;
+      }
+      if (showSecurityModal) {
+        setShowSecurityModal(false);
+        e.preventDefault();
+        return;
+      }
+      if (showAddForm) {
+        setShowAddForm(false);
+        e.preventDefault();
+      }
+    };
+    window.addEventListener("giglizard_back_press", handleBackButton);
+    return () => {
+      window.removeEventListener("giglizard_back_press", handleBackButton);
+    };
+  }, [reviewModalVenue, showSecurityModal, showAddForm]);
+
+  useEffect(() => {
+    // 1. Check for automated headless scrapers (Puppeteer, Selenium, headless Chrome)
+    const botCheck = detectAutomatedBot();
+    if (botCheck.isBot) {
+      console.warn("[Anti-Scraping Defense] Automated crawler signature identified:", botCheck.flags);
+      setIsBotSuspicious(true);
+      setBotFlags(botCheck.flags);
+      setCaptchaPassed(false);
+    }
+
+    const onReviewsUpdated = () => {
+      setReviewsVersion(v => v + 1);
+    };
+    window.addEventListener("giglizard_reviews_updated", onReviewsUpdated);
+    return () => window.removeEventListener("giglizard_reviews_updated", onReviewsUpdated);
+  }, []);
+
+  // Synchronize filters when programmatic route changes (e.g. /venues/austin-tx, /venues/rock/chicago)
+  useEffect(() => {
+    if (programmaticRoute) {
+      if (programmaticRoute.city) {
+        setSearchTerm(programmaticRoute.city);
+      } else {
+        setSearchTerm("");
+      }
+      if (programmaticRoute.stateCode) {
+        setSelectedState(programmaticRoute.stateCode);
+      } else {
+        setSelectedState("All");
+      }
+      if (programmaticRoute.genre) {
+        setSelectedGenre(programmaticRoute.genre);
+      } else {
+        setSelectedGenre("All");
+      }
+    }
+  }, [programmaticRoute]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadVenues = async () => {
+      const saved = localStorage.getItem("custom_venues_v1");
+
+      let customList: Venue[] = [];
+      if (saved) {
+        try {
+          customList = JSON.parse(saved);
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // Query live venues directly from Supabase `venues` table on mount
+      let supabaseVenues: Venue[] = [];
+      let databaseVenues: Venue[] = getCachedDatabaseVenues();
+      try {
+        const { data: dbVenues, error: dbError } = await supabase
+          .from("venues")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!dbError && dbVenues && Array.isArray(dbVenues) && dbVenues.length > 0) {
+          databaseVenues = dbVenues.map((v: any) => ({
+            id: String(v.id || `v-${Date.now()}`),
+            name: v.name || "Music Venue",
+            city: v.city || "Seattle",
+            state: v.state || "WA",
+            address: v.address || `${v.city || "Seattle"}, ${v.state || "WA"}`,
+            genres: Array.isArray(v.genres_accepted) 
+              ? v.genres_accepted 
+              : (typeof v.genres_accepted === "string" ? v.genres_accepted.split(",").map((g: string) => g.trim()).filter(Boolean) : ["Live Music"]),
+            capacity: Number(v.capacity) || 150,
+            contactEmail: v.booking_email || v.email || "booking@giglizard.us",
+            contactPhone: v.phone || "Inquire",
+            description: v.description || `[Capacity: ${v.capacity || 150} guests] Live music stage.`,
+            website: v.website || "www.inquire-booking.com",
+            hasPA: v.hasPA !== false,
+            hasLighting: v.hasLighting !== false
+          }));
+        } else if (databaseVenues.length === 0) {
+          databaseVenues = await fetchAllVenuesFromDatabase();
+        }
+
+        const liveProfiles = await fetchProfiles();
+        if (isMounted) {
+          supabaseVenues = liveProfiles
+            .filter(p => (p.type || p.role) === "Venue")
+            .map(profileToVenue);
+        }
+      } catch (err) {
+        console.warn("Notice querying Supabase venues on mount:", err);
+      }
+
+      let userVenueList: Venue[] = [];
+      if (currentAccount && currentAccount.type === "Venue" && currentAccount.name) {
+        const userVenueObj: Venue = {
+          id: `venue-user-${currentAccount.name.toLowerCase().replace(/\s+/g, "-")}`,
+          name: currentAccount.name,
+          capacity: currentAccount.capacity || 150,
+          address: currentAccount.address || "123 Music Ave",
+          city: currentAccount.city || "Seattle, WA",
+          genres: currentAccount.genre ? currentAccount.genre.split(",").map(g => g.trim()).filter(Boolean) : ["Live Music"],
+          contactEmail: currentAccount.contactEmail || "",
+          contactPhone: currentAccount.contactPhone || "Inquire",
+          description: currentAccount.bio || "Live music performance space.",
+          website: currentAccount.website || "www.inquire-booking.com",
+          hasPA: currentAccount.hasPA ?? true,
+          hasLighting: currentAccount.hasLighting ?? true
+        };
+        userVenueList = [userVenueObj];
+      }
+
+      // Merge newly fetched Supabase venues with local bundled venues (MUSIC_VENUES) & custom venues
+      // Deduplicating by composite key `${name}-${city}-${state}` and placing newly submitted/database venues at the top
+      const initialMerged = mergeVenuesWithBundled(
+        databaseVenues,
+        MUSIC_VENUES,
+        [...userVenueList, ...customList, ...supabaseVenues]
+      ).filter(v => !(v as any).isPrivate && (v as any).venueType !== "house_show");
+
+      const deletedIds = new Set(getOwnerDeletedVenueIds());
+      const ownerEdits = getOwnerVenueEdits();
+
+      const seenVenueKeys = new Set<string>();
+      const deduplicatedVenues: Venue[] = [];
+      for (let v of initialMerged) {
+        if (!v || !v.name) continue;
+        const compositeKey = buildVenueCompositeKey(v.name, v.city, v.state);
+        const nameLower = (v.name || "").trim().toLowerCase();
+
+        if (deletedIds.has(v.id) || (nameLower && deletedIds.has(nameLower))) {
+          continue;
+        }
+        if (ownerEdits[v.id]) {
+          v = { ...v, ...ownerEdits[v.id] };
+        } else if (nameLower && ownerEdits[nameLower]) {
+          v = { ...v, ...ownerEdits[nameLower] };
+        }
+        if (compositeKey && !seenVenueKeys.has(compositeKey)) {
+          seenVenueKeys.add(compositeKey);
+          deduplicatedVenues.push(v);
+        }
+      }
+
+      if (isMounted) {
+        setVenues(deduplicatedVenues);
+      }
+    };
+
+    loadVenues();
+
+    const onVenuesUpdated = () => {
+      loadVenues();
+    };
+
+    window.addEventListener("giglizard_venues_updated", onVenuesUpdated);
+    return () => {
+      isMounted = false;
+      window.removeEventListener("giglizard_venues_updated", onVenuesUpdated);
+    };
+  }, [currentAccount?.name, currentAccount?.type, currentAccount?.contactEmail]);
+
+  const handleAddVenueSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    // Bot trap check
+    if (honeypotBot.trim().length > 0) {
+      console.warn("Bot submission deflected by honeypot.");
+      try {
+        fetch("/api/security-honeypot", { method: "GET" }).catch(() => {});
+      } catch (_) {}
+      return;
+    }
+
+    const cleanName = sanitizeInputText(form.name, 100);
+    const cleanAddress = sanitizeInputText(form.address, 150);
+    const cleanCity = sanitizeInputText(form.city, 100);
+    const cleanEmail = normalizeEmail(sanitizeInputText(form.contactEmail, 100));
+    const cleanPhone = sanitizeInputText(form.contactPhone, 50);
+    const cleanDesc = sanitizeInputText(form.description, 500);
+    const cleanWeb = sanitizeInputText(form.website, 100);
+
+    if (!cleanName || !cleanAddress || !cleanCity || !cleanEmail) {
+      alert("Please fill in all requested fields: Venue Name, Address, City & Email.");
+      return;
+    }
+
+    if (!cleanEmail.includes("@")) {
+      alert("Please enter a valid email address.");
+      return;
+    }
+
+    if (isEmailAlreadyRegistered(cleanEmail)) {
+      alert(`An account with the email "${cleanEmail}" already exists. Please log in or use a different email.`);
+      return;
+    }
+
+    let parsedCity = cleanCity;
+    let parsedState = "";
+    if (cleanCity.includes(",")) {
+      const parts = cleanCity.split(",").map(p => p.trim());
+      parsedCity = parts[0] || cleanCity;
+      parsedState = (parts[1] || "").toUpperCase();
+    } else if (cleanAddress.includes(",")) {
+      const match = cleanAddress.match(/,\s*([A-Za-z]{2})\b/);
+      if (match) parsedState = match[1].toUpperCase();
+    }
+
+    const processedGenres = form.genres 
+      ? form.genres.split(",").map(g => sanitizeInputText(g.trim(), 30)).filter(g => g.length > 0)
+      : ["Live Music"];
+
+    const newVenue: Venue = {
+      id: `venue-${Date.now()}`,
+      name: cleanName,
+      capacity: Number(form.capacity) || 100,
+      address: cleanAddress,
+      city: parsedCity,
+      state: parsedState || undefined,
+      genres: processedGenres,
+      contactEmail: cleanEmail,
+      contactPhone: cleanPhone || "Inquire",
+      description: `[Capacity: ${form.capacity} guests] ${cleanDesc || "A gorgeous live music environment ready for exciting performances."}`,
+      website: cleanWeb || "www.inquire-booking.com",
+      hasPA: form.hasPA,
+      hasLighting: form.hasLighting
+    };
+
+    const compositeKey = buildVenueCompositeKey(newVenue.name, newVenue.city, newVenue.state);
+
+    // 3. Instant UI Update:
+    // Append the new venue to local state immediately so submitting user sees it without hard refresh
+    setVenues(prev => [newVenue, ...prev.filter(v => buildVenueCompositeKey(v.name, v.city, v.state) !== compositeKey)]);
+    setShowAllVenuesExplicitly(true);
+    setIsSubmitting(true);
+    setFormErrorMsg("");
+
+    // Local storage fallback cache
+    const saved = localStorage.getItem("custom_venues_v1");
+    let customList: Venue[] = [];
+    if (saved) {
+      try {
+        customList = JSON.parse(saved);
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    const updatedCustomList = [newVenue, ...customList.filter(v => buildVenueCompositeKey(v.name, v.city, v.state) !== compositeKey)];
+    localStorage.setItem("custom_venues_v1", JSON.stringify(updatedCustomList));
+
+    // 1. Form Submission (Write to Supabase `venues` table directly)
+    let insertResult: { data: any; error: any; venue?: Venue } = { data: null, error: null };
+    try {
+      insertResult = await saveVenueToDatabase({
+        id: newVenue.id,
+        name: cleanName,
+        city: parsedCity,
+        state: parsedState || "WA",
+        address: cleanAddress,
+        capacity: Number(form.capacity) || 100,
+        genres: processedGenres,
+        contactEmail: cleanEmail,
+        contactPhone: cleanPhone,
+        website: cleanWeb,
+        description: newVenue.description,
+        hasPA: form.hasPA,
+        hasLighting: form.hasLighting
+      });
+    } catch (saveErr: any) {
+      console.error("[Venue Registration] Unexpected error writing to Supabase venues table:", saveErr);
+      insertResult = { data: null, error: saveErr };
+    }
+
+    // Dual persist directly into Supabase profiles table for login compatibility
+    insertProfile({
+      id: newVenue.id,
+      name: cleanName,
+      email: cleanEmail,
+      contact_email: cleanEmail,
+      type: "Venue",
+      role: "Venue",
+      city: cleanCity,
+      address: cleanAddress,
+      capacity: Number(form.capacity) || 100,
+      website: cleanWeb || undefined,
+      phone: cleanPhone || undefined,
+      genres: processedGenres,
+      bio: newVenue.description,
+      has_pa: form.hasPA,
+      has_lighting: form.hasLighting
+    }).catch(err => console.warn("Notice: profiles table insert:", err));
+
+    setIsSubmitting(false);
+
+    if (insertResult.error) {
+      console.error("[Venue Registration] Insert to Supabase venues table failed (RLS or database error):", insertResult.error);
+      setFormErrorMsg(
+        `Notice: Cloud database sync encountered an issue (${insertResult.error.message || "Row Level Security or Network error"}). Your venue has been added locally for your session.`
+      );
+    } else {
+      setSuccessMsg(`Successfully registered "${cleanName}"! Venue is now stored in Supabase and live across the platform.`);
+      setTimeout(() => setSuccessMsg(""), 5000);
+      setShowAddForm(false);
+
+      // Reset form
+      setForm({
+        name: "",
+        capacity: 150,
+        address: "",
+        city: "",
+        genres: "",
+        contactEmail: "",
+        contactPhone: "",
+        description: "",
+        website: "",
+        hasPA: true,
+        hasLighting: true
+      });
+    }
+  };
+
+  const genres = ["All", "Grunge", "Punk", "Alternative Rock", "Indie Rock", "Synthwave", "Folk", "Acoustic", "Electronic", "Psychedelic", "Metal", "Jazz"];
+
+  const filteredVenues = venues.filter((venue) => {
+    // 1. Genre filter
+    const matchesGenre = selectedGenre === "All" || venue.genres.includes(selectedGenre);
+    
+    // 2. State filter (All 48 continental states + DC)
+    let matchesState = true;
+    if (selectedState !== "All") {
+      const st = selectedState.toUpperCase();
+      matchesState = (venue.state?.toUpperCase() === st) ||
+        venue.address.toUpperCase().includes(`, ${st}`) ||
+        venue.city.toUpperCase().includes(`, ${st}`) ||
+        venue.id.toLowerCase().startsWith(`${st.toLowerCase()}-`);
+    }
+
+    // 3. Search match
+    let matchesSearch = true;
+    if (searchTerm.trim()) {
+      const targetText = `${venue.name} ${venue.city} ${venue.state || ""} ${venue.address} ${venue.genres.join(" ")} ${venue.description} ${venue.contactEmail}`.toLowerCase();
+      const cleanSearch = searchTerm.toLowerCase().replace(/[,]+/g, " ").trim();
+      const searchTokens = cleanSearch.split(/\s+/).filter(Boolean);
+      
+      matchesSearch = searchTokens.every(token => {
+        if (token === "ca" || token === "california") {
+          return venue.state?.toLowerCase() === "ca" || targetText.includes("ca") || targetText.includes("california");
+        }
+        if (token === "la") {
+          return (venue.city?.toLowerCase() === "los angeles") || (venue.state?.toLowerCase() === "la") || targetText.includes("la");
+        }
+        return targetText.includes(token);
+      });
+    }
+
+    // 4. Capacity filter
+    let matchesCapacity = true;
+    if (selectedCapacity === "small") {
+      matchesCapacity = venue.capacity < 150;
+    } else if (selectedCapacity === "medium") {
+      matchesCapacity = venue.capacity >= 150 && venue.capacity <= 300;
+    } else if (selectedCapacity === "large") {
+      matchesCapacity = venue.capacity > 300;
+    }
+
+    if (!matchesGenre || !matchesState || !matchesSearch || !matchesCapacity) return false;
+
+    // 5. Rating filter
+    if (selectedRatingFilter !== "All") {
+      const stats = getRatingStats(venue.id, venue.name, "venue");
+      const minRating = parseFloat(selectedRatingFilter);
+      if (stats.average < minRating) return false;
+    }
+
+    return true;
+  });
+
+  const isSearchActive = Boolean(
+    searchTerm.trim().length > 0 ||
+    selectedState !== "All" ||
+    selectedGenre !== "All" ||
+    selectedCapacity !== "All" ||
+    selectedRatingFilter !== "All"
+  );
+
+  const shouldShowVenues = isSearchActive || showAllVenuesExplicitly;
+
+  const renderExploreSection = () => (
+    <section className="bg-white rounded-2xl border border-gray-200/90 p-6 md:p-8 space-y-6 shadow-xs" id="programmatic-venue-seo-index">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-100 pb-4">
+        <div>
+          <div className="text-xs font-semibold text-indigo-600 tracking-wide uppercase">
+            Touring Market Directory · Lower 48 Stages
+          </div>
+          <h3 className="text-lg md:text-xl font-black text-slate-900 tracking-tight mt-0.5">
+            Explore Live Music Venues by City &amp; Genre
+          </h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Targeted booking directories with room specs, talent buyer contacts, and corridor runs.
+          </p>
+        </div>
+        <span className="text-xs font-mono text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200/60 font-semibold self-start sm:self-auto">
+          {venueCountStr} Stages &amp; {bandCountStr} Bands
+        </span>
+      </div>
+
+      {/* City Markets Grid */}
+      <div className="space-y-3">
+        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <MapPin className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Top Touring Hubs (City Directories)</span>
+        </h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs">
+          {POPULAR_TOURING_CITIES.map((c) => {
+            const url = `/venues/${c.slug}`;
+            const isCurrent = programmaticRoute?.canonicalPath === url;
+            return (
+              <a
+                key={c.slug}
+                href={url}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const route = parseProgrammaticVenuePath(url);
+                  if (onNavigateProgrammaticRoute) {
+                    onNavigateProgrammaticRoute(route, url);
+                  }
+                }}
+                className={`p-3 rounded-xl border transition-all flex flex-col justify-between cursor-pointer group ${
+                  isCurrent
+                    ? "bg-indigo-50/90 border-indigo-400 text-indigo-900 shadow-xs"
+                    : "bg-slate-50/60 hover:bg-indigo-50/40 border-gray-200/80 hover:border-indigo-300 text-slate-800"
+                }`}
+              >
+                <div>
+                  <span className="font-bold block text-slate-900 group-hover:text-indigo-600 transition-colors">
+                    {c.city}, {c.state}
+                  </span>
+                  <span className="text-[10.5px] text-gray-500 line-clamp-1 mt-0.5">
+                    {c.tagline}
+                  </span>
+                </div>
+                <span className="text-[10px] text-indigo-600 font-semibold mt-2 inline-flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                  <span>View Stages</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Genre + City Circuit Grid */}
+      <div className="space-y-3 pt-4 border-t border-gray-100">
+        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <Volume2 className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Popular Genre Circuits</span>
+        </h4>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+          {POPULAR_GENRE_CITY_ROUTES.map((g) => {
+            const url = `/venues/${g.slug}`;
+            const isCurrent = programmaticRoute?.canonicalPath === url;
+            return (
+              <a
+                key={g.slug}
+                href={url}
+                onClick={(e) => {
+                  e.preventDefault();
+                  const route = parseProgrammaticVenuePath(url);
+                  if (onNavigateProgrammaticRoute) {
+                    onNavigateProgrammaticRoute(route, url);
+                  }
+                }}
+                className={`p-3 rounded-xl border transition-all flex flex-col justify-between cursor-pointer group ${
+                  isCurrent
+                    ? "bg-amber-50/90 border-amber-400 text-amber-950 shadow-xs"
+                    : "bg-slate-50/60 hover:bg-amber-50/40 border-gray-200/80 hover:border-amber-300 text-slate-800"
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 group-hover:text-amber-700 transition-colors">
+                      {g.genre} in {g.city}
+                    </span>
+                    <span className="text-[10px] font-mono text-gray-400">{g.state}</span>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-snug">
+                    Verified {g.metaSummary}
+                  </p>
+                </div>
+                <span className="text-[10.5px] text-amber-700 font-semibold mt-2 inline-flex items-center gap-0.5 group-hover:translate-x-0.5 transition-transform">
+                  <span>Explore {g.genre} Venues</span>
+                  <ArrowRight className="w-2.5 h-2.5" />
+                </span>
+              </a>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Touring States Quick Filter */}
+      <div className="space-y-3 pt-4 border-t border-gray-100">
+        <h4 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+          <Compass className="w-3.5 h-3.5 text-indigo-600" />
+          <span>Touring States Quick Filter</span>
+        </h4>
+        <div className="flex flex-wrap gap-1.5 text-xs">
+          {["WA", "CA", "TX", "TN", "IL", "CO", "NY", "OR", "MA", "GA", "PA", "NC", "OH", "AZ", "FL", "MN"].map((st) => (
+            <button
+              key={st}
+              type="button"
+              onClick={() => {
+                setSelectedState(st);
+                setShowAllVenuesExplicitly(true);
+              }}
+              className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition-all cursor-pointer ${
+                selectedState === st
+                  ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                  : "bg-slate-50 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border-slate-200"
+              }`}
+            >
+              {st}
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+
+  if (programmaticRoute && (programmaticRoute.type === "city-state" || programmaticRoute.type === "venue-profile")) {
+    return (
+      <CityVenueDirectory
+        programmaticRoute={programmaticRoute}
+        currentAccount={currentAccount}
+        onNavigateProgrammaticRoute={onNavigateProgrammaticRoute}
+        onSelectVenueForPoster={onSelectVenueForPoster}
+        onTriggerRegisterVenue={() => {
+          if (onNavigateProgrammaticRoute) onNavigateProgrammaticRoute(null, "/venues");
+          setShowAddForm(true);
+        }}
+      />
+    );
+  }
+
+  return (
+    <div className="space-y-6" id="venues-directory-panel">
+      {/* Bot Verification Gate if Suspicious Headless Activity Detected */}
+      {isBotSuspicious && !captchaPassed && (
+        <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl p-6 shadow-2xl text-white space-y-4 animate-scale-up" id="bot-challenge-venue-gate">
+          <div className="flex items-start gap-3">
+            <div className="p-3 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl flex-shrink-0">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-black text-white">
+                Automated Crawler Shield Verification
+              </h3>
+              <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                Our defensive anti-scraping system detected an automated browsing signature ({botFlags.join(", ") || "Headless runtime"}). Please solve the verification challenge below to confirm human identity and view venue data.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+            <CaptchaChallenge
+              onVerified={(isValid) => {
+                if (isValid) {
+                  setCaptchaPassed(true);
+                  setIsBotSuspicious(false);
+                }
+              }}
+              theme="dark"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Anti-Scraping Active Status Banner */}
+      <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 text-white rounded-2xl p-4 md:p-5 flex flex-wrap items-center justify-between gap-4 border border-indigo-500/30 shadow-md">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl">
+            <ShieldCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black uppercase tracking-wider text-emerald-400">
+                Anti-Scraping Armor: 100% Active
+              </span>
+              <span className="bg-emerald-500/10 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-500/20">
+                Protected Directory
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Venue contacts are shielded with DOM deconstruction, honeytoken traps, and bad bot firewalls to stop automated harvesters.
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowSecurityModal(true)}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold py-2 px-3.5 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+        >
+          <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          <span>View Security Shield Diagnostics</span>
+        </button>
+      </div>
+
+      {/* Dynamic CTA wrapper for registration */}
+      <div className="bg-slate-900 text-white rounded-2xl p-6 md:p-8 flex flex-col md:flex-row items-center gap-6 justify-between border border-slate-950 shadow-md" id="venues-cta-panel">
+        <div className="space-y-1.5 text-center md:text-left">
+          <div className="inline-flex items-center gap-1 bg-indigo-500/30 text-indigo-200 text-xs font-bold py-1 px-3 rounded-full">
+            <Volume2 className="w-3.5 h-3.5" />
+            Coordinated Venues Circle
+          </div>
+          <h2 className="text-xl md:text-2xl font-black text-white tracking-tight">
+            Are you a Venue Owner or Promoter?
+          </h2>
+          <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+            Register your live music spaces, stages, or DIY basement rooms to our booking directory so active bands can instantly find details, compile riders, and design stunning concert posters for your venue.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowAddForm(!showAddForm)}
+          className="flex-shrink-0 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs py-3 px-5 rounded-xl transition-all cursor-pointer flex items-center gap-2 shadow-lg"
+        >
+          <PlusCircle className="w-4 h-4" />
+          {showAddForm ? "Cancel Space Add" : "Register Your Venue"}
+        </button>
+      </div>
+
+      {successMsg && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-emerald-900 text-xs font-semibold flex items-center gap-2" id="success-banner-venue">
+          <Check className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+          <span>{successMsg}</span>
+        </div>
+      )}
+
+      {formErrorMsg && (
+        <div className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-amber-900 text-xs font-semibold flex items-center justify-between gap-2 shadow-xs" id="error-banner-venue">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+            <span>{formErrorMsg}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setFormErrorMsg("")}
+            className="text-amber-700 hover:text-amber-950 p-1 cursor-pointer"
+            title="Dismiss error notice"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Show collapsible add venue form */}
+      {showAddForm && (
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-md space-y-4 animate-slide-down" id="add-venue-form-layout">
+          <div className="border-b border-gray-100 pb-3">
+            <h4 className="text-sm font-black text-slate-900 uppercase tracking-wider">
+              Add Your Live Music Venue
+            </h4>
+            <p className="text-[11px] text-gray-400">
+              Provide your stage layouts and contact info to appear instantly in this independent bookable space list.
+            </p>
+          </div>
+
+          <form onSubmit={handleAddVenueSubmit} className="space-y-4 text-xs">
+            {/* Honeypot Bot Trap Field */}
+            <div style={{ position: "absolute", left: "-9999px", opacity: 0, height: 0, width: 0, overflow: "hidden" }}>
+              <label htmlFor="hp-field-bot">Leave this field blank to confirm human:</label>
+              <input
+                id="hp-field-bot"
+                type="text"
+                tabIndex={-1}
+                value={honeypotBot}
+                onChange={(e) => setHoneypotBot(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Venue Name <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="E.g., Starry Heavens lounge"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Max Capacity Audience <span className="text-rose-500">*</span></label>
+                <input
+                  type="number"
+                  required
+                  placeholder="E.g., 200"
+                  value={form.capacity}
+                  onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) || 0 })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Street Address <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="E.g., 555 Velvet Highway"
+                  value={form.address}
+                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">City & State <span className="text-rose-500">*</span></label>
+                <input
+                  type="text"
+                  required
+                  placeholder="E.g., Seattle, WA"
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Vibe/Genres <span className="text-gray-400 font-normal">(Comma separated tags)</span></label>
+                <input
+                  type="text"
+                  placeholder="E.g., Alternative Rock, Folk, Acoustic"
+                  value={form.genres}
+                  onChange={(e) => setForm({ ...form, genres: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-5">
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.hasPA}
+                    onChange={(e) => setForm({ ...form, hasPA: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                  />
+                  Has house PA System
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={form.hasLighting}
+                    onChange={(e) => setForm({ ...form, hasLighting: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-gray-300"
+                  />
+                  Has Stage Lighting
+                </label>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-gray-700 font-bold mb-1">Short Stage/Vibe Description</label>
+              <textarea
+                placeholder="Give details about your staging, floor dimensions, or load-in directives..."
+                value={form.description}
+                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[70px]"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Booking Email <span className="text-rose-500">*</span></label>
+                <input
+                  type="email"
+                  required
+                  placeholder="E.g., bookings@myvenue.com"
+                  value={form.contactEmail}
+                  onChange={(e) => setForm({ ...form, contactEmail: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Contact Phone</label>
+                <input
+                  type="text"
+                  placeholder="E.g., (206) 628-3151"
+                  value={form.contactPhone}
+                  onChange={(e) => setForm({ ...form, contactPhone: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-gray-700 font-bold mb-1">Official Website</label>
+                <input
+                  type="text"
+                  placeholder="E.g., www.myvenue.com"
+                  value={form.website}
+                  onChange={(e) => setForm({ ...form, website: e.target.value })}
+                  className="w-full p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            {formErrorMsg && (
+              <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 text-amber-900 text-xs font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>{formErrorMsg}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(false);
+                  setFormErrorMsg("");
+                }}
+                disabled={isSubmitting}
+                className="py-2 px-4 rounded-lg bg-slate-100 hover:bg-slate-200 font-bold cursor-pointer disabled:opacity-50"
+              >
+                Close Form
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="py-2 px-5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold cursor-pointer disabled:opacity-60 flex items-center gap-2"
+              >
+                {isSubmitting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                <span>{isSubmitting ? "Registering Venue..." : "Register My Venue Space"}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Programmatic SEO Landing Page Hero Banner (e.g. /venues/austin-tx, /venues/rock/chicago, /venues/seattle-wa) */}
+      {programmaticRoute && (
+        <div className="bg-slate-900 text-white rounded-2xl p-6 md:p-8 border border-indigo-500/30 shadow-lg space-y-4" id="programmatic-seo-venue-header">
+          {/* Breadcrumb Navigation */}
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-slate-400 flex-wrap">
+            {programmaticRoute.breadcrumb.map((crumb, idx) => (
+              <React.Fragment key={crumb.url}>
+                {idx > 0 && <span className="text-slate-600">/</span>}
+                {idx === programmaticRoute.breadcrumb.length - 1 ? (
+                  <span className="text-indigo-300 font-bold">{crumb.name}</span>
+                ) : (
+                  <a
+                    href={crumb.url.replace("https://www.giglizard.us", "") || "/"}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      if (onNavigateProgrammaticRoute) {
+                        onNavigateProgrammaticRoute(null, crumb.url.replace("https://www.giglizard.us", "") || "/");
+                      }
+                    }}
+                    className="hover:text-white transition-colors underline"
+                  >
+                    {crumb.name}
+                  </a>
+                )}
+              </React.Fragment>
+            ))}
+          </nav>
+
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold tracking-wide">
+                <Compass className="w-3.5 h-3.5" />
+                <span>Touring Market Directory · Lower 48</span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
+                {programmaticRoute.heading}
+              </h1>
+              <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                {programmaticRoute.subhead}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onNavigateProgrammaticRoute) {
+                  onNavigateProgrammaticRoute(null, "/venues");
+                }
+                setSearchTerm("");
+                setSelectedState("All");
+                setSelectedGenre("All");
+              }}
+              className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs rounded-xl border border-slate-700 transition-all flex items-center gap-1.5 self-start md:self-auto shrink-0 cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5 text-rose-400" />
+              <span>Reset &amp; View All {venueCountStr} USA Venues &amp; {bandCountStr} Bands</span>
+            </button>
+          </div>
+
+          <div className="pt-3 border-t border-slate-800 flex flex-wrap items-center gap-3 text-xs text-slate-300">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-950/70 text-indigo-300 border border-indigo-500/30 font-semibold font-mono">
+              <span>{filteredVenues.length} Stages Listed</span>
+            </span>
+            <span className="text-slate-400">·</span>
+            <span className="text-slate-300">Verified Direct Talent Buyer Contacts</span>
+            <span className="text-slate-400">·</span>
+            <span className="text-emerald-400 font-semibold">100% Free Forever</span>
+            {programmaticRoute.city && (
+              <>
+                <span className="text-slate-400">·</span>
+                <span className="text-amber-300">
+                  {POPULAR_TOURING_CITIES.find(c => c.city.toLowerCase() === programmaticRoute.city?.toLowerCase())?.corridor || `Tour Stop: ${programmaticRoute.city}`}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main /venues Header Banner (c_h1_single, g_definition) */}
+      {!programmaticRoute && (
+        <div className="bg-slate-900 text-white rounded-2xl p-6 md:p-8 border border-slate-800 shadow-md space-y-3" id="main-venues-header-banner">
+          <div className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold tracking-wide">
+            <Compass className="w-3.5 h-3.5" />
+            <span>Nationwide Music Venue Directory · Lower 48</span>
+          </div>
+          <h1 className="text-2xl md:text-4xl font-black text-white tracking-tight">
+            650+ Live Music Clubs &amp; Verified Venue Booking Inboxes
+          </h1>
+          <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
+            GigLizard's Venue Directory is a free nationwide database of {venueCountStr} independent live music venues across the Lower 48, providing verified talent buyer emails, room capacities, age restrictions, and house audio specs.
+          </p>
+        </div>
+      )}
+
+      {/* Search and Filters heading row */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-xs p-5 space-y-4" id="venue-filter-box">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2" id="dir-filter-title-row">
+          <h3 className="text-sm font-extrabold text-slate-900 tracking-tight" id="dir-filter-title">
+            Music Booking & Venues Locator
+          </h3>
+          <div className="flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/60 font-semibold select-none">
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Anti-Scraping Active • Safe Contact Channel</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" id="filters-layout">
+          {/* Keyword Search */}
+          <div className="relative" id="search-input-wrap">
+            <Search className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              id="venue-keyword-search"
+              placeholder="Search venue name, city, vibe..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full text-xs pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-slate-50/50"
+            />
+          </div>
+
+          {/* State / Region filter */}
+          <div id="state-select-wrap">
+            <select
+              id="venue-state-select"
+              value={selectedState}
+              onChange={(e) => setSelectedState(e.target.value)}
+              className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-medium text-slate-800"
+            >
+              <option value="All">All 48 States (+ DC)</option>
+              {CONTINENTAL_US_STATES.map((st) => (
+                <option key={st.code} value={st.code}>
+                  {st.code} - {st.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Genre drop down */}
+          <div id="genre-select-wrap">
+            <select
+              id="venue-genre-select"
+              value={selectedGenre}
+              onChange={(e) => setSelectedGenre(e.target.value)}
+              className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="All">All Genre Directives</option>
+              {genres.slice(1).map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Capacity selection */}
+          <div id="capacity-select-wrap">
+            <select
+              id="venue-capacity-select"
+              value={selectedCapacity}
+              onChange={(e) => setSelectedCapacity(e.target.value)}
+              className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="All">All Capacities</option>
+              <option value="small">Small Dive (&lt; 150)</option>
+              <option value="medium">Medium (150 - 300)</option>
+              <option value="large">Large (300+)</option>
+            </select>
+          </div>
+
+          {/* Star Rating selection */}
+          <div id="rating-select-wrap">
+            <select
+              id="venue-rating-select"
+              value={selectedRatingFilter}
+              onChange={(e) => setSelectedRatingFilter(e.target.value)}
+              className="w-full text-xs p-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white font-medium text-slate-700"
+            >
+              <option value="All">★ All Ratings</option>
+              <option value="4.8">★ 4.8+ Stars</option>
+              <option value="4.5">★ 4.5+ Stars</option>
+              <option value="4.0">★ 4.0+ Stars</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* 1. Default State: Don't automatically list venues. Show Explore by City & Genre and search prompt */}
+      {!shouldShowVenues && (
+        <div className="space-y-6 animate-fade-in" id="explore-before-search-block">
+          <div className="bg-gradient-to-r from-indigo-50/70 via-white to-slate-50 border border-indigo-100/90 rounded-2xl p-5 md:p-6 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="inline-flex items-center gap-1.5 text-xs font-black text-indigo-700 uppercase tracking-wider">
+                <Search className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Search by Criteria or Pick a City Hub</span>
+              </div>
+              <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                Explore Verified Stages by City &amp; Genre
+              </h3>
+              <p className="text-xs text-slate-600 max-w-xl leading-relaxed">
+                Choose a touring city or genre circuit below to view curated room listings with house PA and lighting specs. Or use the locator above to filter by state, vibe, or capacity.
+              </p>
+            </div>
+            <button
+              type="button"
+              id="btn-browse-all-stages"
+              onClick={() => setShowAllVenuesExplicitly(true)}
+              className="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold border border-slate-300 transition-all shadow-2xs flex items-center gap-1.5 shrink-0 self-start sm:self-auto cursor-pointer"
+            >
+              <span>Browse All {venueCountStr} Stages</span>
+              <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+            </button>
+          </div>
+
+          {renderExploreSection()}
+        </div>
+      )}
+
+      {/* 2. When a Search is Performed or "Browse All" is Clicked: Show Search Results and Venues Grid */}
+      {shouldShowVenues && (
+        <div className="space-y-6 animate-fade-in" id="active-search-results-block">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white border border-slate-200/90 rounded-2xl p-4 md:px-5 text-xs shadow-2xs">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-50 text-indigo-800 font-black border border-indigo-200">
+                <span>{filteredVenues.length} {filteredVenues.length === 1 ? "Stage" : "Stages"} Found</span>
+              </span>
+              {isSearchActive ? (
+                <span className="text-slate-600 font-medium text-xs">
+                  matching your search filters
+                </span>
+              ) : (
+                <span className="text-slate-600 font-medium text-xs">
+                  showing all continental USA live music stages
+                </span>
+              )}
+            </div>
+
+            <button
+              type="button"
+              id="btn-reset-venue-search"
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedState("All");
+                setSelectedGenre("All");
+                setSelectedCapacity("All");
+                setSelectedRatingFilter("All");
+                setShowAllVenuesExplicitly(false);
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center gap-1.5 transition-colors self-start sm:self-auto cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5 text-rose-500" />
+              <span>Back to City &amp; Genre Hubs</span>
+            </button>
+          </div>
+
+          {/* Grid of searchable venues */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6" id="venues-listing-grid">
+            
+            {/* Invisible Honeypot Canary Venue Card to catch automated DOM scrapers */}
+            <div 
+              aria-hidden="true" 
+              style={{ 
+                position: "absolute", 
+                left: "-9999px", 
+                width: "1px", 
+                height: "1px", 
+                overflow: "hidden", 
+                opacity: 0, 
+                pointerEvents: "none" 
+              }}
+              className="venue-card-canary-honeypot"
+            >
+              <h4>Pacific Canary Trap Music Hall</h4>
+              <p>Seattle, WA • 1000 Fake St</p>
+              <a href="mailto:spider-trap@pacifictour-honeypot.internal">spider-trap@pacifictour-honeypot.internal</a>
+              <span>(206) 019-9999</span>
+            </div>
+
+        {filteredVenues.map((v) => {
+          const isChosen = selectedVenueId === v.id;
+          const stats = getRatingStats(v.id, v.name, "venue");
+
+          return (
+            <div
+              key={v.id}
+              id={`venue-card-${v.id}`}
+              className={`bg-white rounded-xl border p-5 flex flex-col justify-between transition-all ${
+                isChosen
+                  ? "border-indigo-600 ring-2 ring-indigo-500/5 shadow-xs"
+                  : "border-gray-100 hover:border-gray-200 shadow-xs"
+              }`}
+            >
+              <div className="space-y-3" id={`venue-main-body-${v.id}`}>
+                {/* Visual Header */}
+                <div className="flex justify-between items-start" id={`venue-title-row-${v.id}`}>
+                  <div>
+                    <h4 className="text-base font-black text-gray-900 tracking-tight" id={`venue-name-${v.id}`}>
+                      {v.name}
+                    </h4>
+                    <p className="text-xs text-gray-400 font-medium flex items-center gap-1 mt-0.5" id={`venue-loc-${v.id}`}>
+                      <MapPin className="w-3.5 h-3.5 text-rose-500" />
+                      {v.city} • {v.address}
+                    </p>
+                  </div>
+                  <span className="bg-slate-100 text-slate-800 text-[10px] font-extrabold px-2 py-1 rounded flex items-center gap-1" id={`venue-cap-${v.id}`}>
+                    <Users className="w-3 h-3 text-slate-500" />
+                    {v.capacity} Cap
+                  </span>
+                </div>
+
+                {/* 5-Star Rating Badge & Review Launcher */}
+                <div className="flex items-center justify-between bg-amber-50/60 border border-amber-200/60 px-3 py-1.5 rounded-lg">
+                  <RatingStars
+                    rating={stats.average}
+                    size="sm"
+                    showNumber={true}
+                    reviewCount={stats.count}
+                    onClickReviewBadge={() => setReviewModalVenue(v)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setReviewModalVenue(v)}
+                    className="text-[11px] font-black text-amber-900 hover:text-amber-700 bg-amber-200/70 hover:bg-amber-200 px-2.5 py-0.5 rounded transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <MessageSquare className="w-3 h-3" />
+                    <span>Reviews ({stats.count})</span>
+                  </button>
+                </div>
+
+                {/* Genres list */}
+                <div className="flex flex-wrap gap-1" id={`venue-genres-${v.id}`}>
+                  {v.genres.map((g) => (
+                    <span
+                      key={g}
+                      className="bg-indigo-50 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded"
+                      id={`venue-genre-tag-${g}`}
+                    >
+                      {g}
+                    </span>
+                  ))}
+                </div>
+
+                {/* Room description info */}
+                <p className="text-xs text-gray-600 leading-relaxed" id={`venue-desc-${v.id}`}>
+                  {v.description}
+                </p>
+
+                {/* Tech specifications bar */}
+                <div className="grid grid-cols-2 gap-2 py-2 border-y border-gray-50 text-[11px] font-semibold text-gray-500" id={`venue-tech-specs-${v.id}`}>
+                  <div className="flex items-center gap-1.5" id={`venue-pa-${v.id}`}>
+                    <Volume2 className={`w-4 h-4 ${v.hasPA ? "text-emerald-500" : "text-amber-500"}`} />
+                    <span>Active House PA: <strong>{v.hasPA ? "Supplied" : "None (Inquire)"}</strong></span>
+                  </div>
+                  <div className="flex items-center gap-1.5" id={`venue-lights-${v.id}`}>
+                    <Lightbulb className={`w-4 h-4 ${v.hasLighting ? "text-emerald-500" : "text-amber-500"}`} />
+                    <span>Stage Lights: <strong>{v.hasLighting ? "Installed" : "None / DIY"}</strong></span>
+                  </div>
+                </div>
+
+                {/* Warning message if no PA */}
+                {!v.hasPA && (
+                  <div className="bg-amber-50 text-amber-900 px-3 py-2 rounded-lg text-[10px] flex items-start gap-1.5 border border-amber-100" id={`venue-warning-${v.id}`}>
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                    <span><strong>House PA Alert:</strong> This location does not offer a physical vocal system setup. You'll need to coordinate a portable sound column or speakers.</span>
+                  </div>
+                )}
+
+                {/* Booking contact channels - Protected with Anti-Scraping Deconstructed DOM */}
+                <div className="bg-slate-50/90 p-3 rounded-xl text-xs space-y-2 border border-slate-200/70 select-none" id={`venue-contacts-${v.id}`}>
+                  <div className="flex flex-col gap-1.5" id={`venue-email-${v.id}`}>
+                    <span className="text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
+                      <span>Booking Contact:</span>
+                      <span className="text-[9px] text-emerald-600 font-semibold flex items-center gap-0.5">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Anti-Scrape Protected
+                      </span>
+                    </span>
+                    <ProtectedContact
+                      type="email"
+                      value={v.contactEmail}
+                      isUnlocked={true}
+                      sourceContext="venue"
+                    />
+                  </div>
+                  {v.contactPhone && (
+                    <div className="flex flex-col gap-1 pt-1 border-t border-slate-200/50" id={`venue-phone-${v.id}`}>
+                      <span className="text-[10px] uppercase font-bold text-slate-400">Direct Phone:</span>
+                      <ProtectedContact
+                        type="phone"
+                        value={v.contactPhone}
+                        isUnlocked={true}
+                        sourceContext="venue"
+                      />
+                    </div>
+                  )}
+                  {v.website && (
+                    <div className="flex items-center gap-2 text-slate-700 pt-1 border-t border-slate-200/50" id={`venue-site-${v.id}`}>
+                      <Globe className="w-3.5 h-3.5 text-gray-400" />
+                      <a 
+                        href={v.website.startsWith("http") ? v.website : `https://${v.website}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer nofollow" 
+                        className="font-mono text-[11px] text-indigo-600 hover:underline cursor-pointer"
+                      >
+                        {v.website}
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Selection and Review buttons */}
+              <div className="mt-4 border-t border-gray-50 pt-3 flex flex-col gap-2" id={`venue-actions-${v.id}`}>
+                <button
+                  type="button"
+                  id={`btn-review-venue-${v.id}`}
+                  onClick={() => setReviewModalVenue(v)}
+                  className="w-full py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 flex items-center justify-center gap-1.5"
+                >
+                  <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                  Rate & View Community Reviews ({stats.count})
+                </button>
+
+                <button
+                  type="button"
+                  id={`btn-select-venue-${v.id}`}
+                  onClick={() => onSelectVenueForPoster(v)}
+                  className={`w-full py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                    isChosen
+                      ? "bg-slate-100 text-slate-800 border border-slate-200"
+                      : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs"
+                  }`}
+                >
+                  <Ticket className="w-3.5 h-3.5" />
+                  {isChosen 
+                    ? "Selected Venue for Promotional Materials" 
+                    : "Select Venue for Gig Plan"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {filteredVenues.length === 0 && (
+          <div className="col-span-full bg-white border border-gray-100 rounded-xl p-8 text-center text-gray-500 text-xs font-semibold space-y-3" id="no-venues-state">
+            <p>No booking venues fit your search terms. Open options and clear search variables.</p>
+            <button
+              type="button"
+              onClick={() => {
+                setSearchTerm("");
+                setSelectedState("All");
+                setSelectedGenre("All");
+                setSelectedCapacity("All");
+                setSelectedRatingFilter("All");
+                setShowAllVenuesExplicitly(false);
+              }}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg transition-colors cursor-pointer"
+            >
+              Clear Filters &amp; Return to City Hubs
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Explore Section below search results */}
+      {renderExploreSection()}
+    </div>
+  )}
+
+      {/* Security Shield Diagnostic Modal */}
+      <SecurityShieldModal
+        isOpen={showSecurityModal}
+        onClose={() => setShowSecurityModal(false)}
+      />
+
+      {/* 5-Star Ratings & Reviews Modal */}
+      {reviewModalVenue && (
+        <ReviewsModal
+          isOpen={Boolean(reviewModalVenue)}
+          onClose={() => setReviewModalVenue(null)}
+          targetId={reviewModalVenue.id}
+          targetName={reviewModalVenue.name}
+          targetType="venue"
+          currentAccount={currentAccount || null}
+        />
+      )}
+    </div>
+  );
+}
+
+

@@ -1,0 +1,15 @@
+node_modules/
+build/
+dist/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+.python_packages/
+.gmp_cache/
+tmp/
+audit_*.html
+audit_*.txt
+parsed_*.txt
+tmp_*

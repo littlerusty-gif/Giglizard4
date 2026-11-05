@@ -487,7 +487,7 @@ export default function ComparisonPage({
                     Hero Headline (h1)
                   </td>
                   <td className="py-3.5 px-5 bg-indigo-50/40 font-bold text-indigo-950">
-                    “Find Venues, Book Shows - 4,800+ Bookable Venues Across the Lower 48”
+                    “Find Venues, Book Shows - 650+ Venues Across the Lower 48”
                   </td>
                   <td className="py-3.5 px-5 text-gray-650 italic">
                     “Run a More Powerful, Profitable Live Events Business”

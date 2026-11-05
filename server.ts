@@ -1690,9 +1690,9 @@ interface RouteMetadata {
 const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
   "/": {
     title: "GigLizard — Nationwide Music Venue Directory & DIY Tour Booking Suite",
-    description: "Find 650+ music venues and 1,650+ touring bands for free, calculate AI tour routes with Google Maps, and create pro stage plots & riders with zero recurring subscription fees.",
+    description: "Find 650+ music venues and 4,850+ touring bands for free, calculate AI tour routes with Google Maps, and create pro stage plots & riders with zero recurring subscription fees.",
     canonical: "https://www.giglizard.us/",
-    heading: "Independent Bands: Find Venues, Book Shows - 4,800+ Bookable Rooms Across the Lower 48",
+    heading: "Independent Bands: Find Venues, Book Shows - 650+ Venues Across the Lower 48",
     subhead: "GigLizard is a free nationwide independent music venue directory and DIY tour booking platform for touring bands, venues, and sound engineers across the Lower 48."
   },
   "/pricing": {
@@ -1781,23 +1781,23 @@ const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
   },
   "/verification": {
     title: "Directory Verification Log & Freshness Audits | GigLizard",
-    description: "Live moderation log and dated verification audits for 650+ music venues and 1,650+ active touring bands across the Lower 48.",
+    description: "Live moderation log and dated verification audits for 650+ music venues and 4,850+ active touring bands across the Lower 48.",
     canonical: "https://www.giglizard.us/verification",
-    heading: "How We Verify 650+ Venues & 1,650+ Bands Without Stale Scraping",
+    heading: "How We Verify 650+ Venues & 4,850+ Bands Without Stale Scraping",
     subhead: "Live moderation queue, dated audit entries, and community bounce reports resolved within 24 hours."
   },
   "/venues": {
     title: "650+ Live Music Clubs & Verified Venue Booking Inboxes | GigLizard",
     description: "Search 650+ verified live music clubs across the Lower 48 with direct booking emails, stage specs, and house PA details.",
     canonical: "https://www.giglizard.us/venues",
-    heading: "Find Venues & Bands, Book Shows - 650+ Venues & 1,650+ Bands Across the USA",
+    heading: "Find Venues & Bands, Book Shows - 650+ Venues & 4,850+ Bands Across the USA",
     subhead: "Browse live music venues by city, state, capacity, and genre. 100% free with verified booking emails and stage sound specs."
   },
   "/bands": {
     title: "Touring Bands & Co-Bills ($9.99 Pass) | GigLizard",
-    description: "Browse 1,650+ active touring bands across the Lower 48 seeking co-bills and shared dates. Flat 30-day pass for $9.99 with no auto-renewal.",
+    description: "Browse 4,850+ active touring bands across the Lower 48 seeking co-bills and shared dates. Flat 30-day pass for $9.99 with no auto-renewal.",
     canonical: "https://www.giglizard.us/bands",
-    heading: "1,650+ Active Touring Bands Across the Lower 48",
+    heading: "4,850+ Active Touring Bands Across the Lower 48",
     subhead: "Find compatible touring acts to swap shows and fill rooms in every tour stop."
   },
   "/tour": {

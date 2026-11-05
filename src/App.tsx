@@ -1781,7 +1781,7 @@ export default function GigLizardApp() {
               onClick={(e) => { e.preventDefault(); setActiveTab("venues"); }}
               id="header-browse-venues-cta"
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-black rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all whitespace-nowrap cursor-pointer active:scale-95"
-              title="Search 4,800+ music clubs & venues for free"
+              title="Search 650+ music clubs & venues for free"
             >
               <MapPin className="w-3.5 h-3.5 text-indigo-200 shrink-0" />
               <span>Browse Venues (Free)</span>

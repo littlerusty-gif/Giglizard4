@@ -14,13 +14,14 @@ export function roundToNearest50(count: number): number {
 }
 
 // Actual database and directory baseline numbers rounded to the nearest 50
-export const BASELINE_VENUE_COUNT = roundToNearest50(MUSIC_VENUES.length);
-export const BASELINE_BAND_COUNT = 1650;
+// (669 actual venues -> 650+, 4,863 actual bands -> 4,850+)
+export const BASELINE_VENUE_COUNT = 650;
+export const BASELINE_BAND_COUNT = 4850;
 
 // 30 days in milliseconds (30 days * 24 hrs * 60 mins * 60 secs * 1000 ms)
 export const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
-const STORAGE_KEY = 'giglizard_directory_counts_30d_v3';
+const STORAGE_KEY = 'giglizard_directory_counts_30d_v4';
 
 export interface DirectoryCounts {
   venueCount: number;
@@ -90,11 +91,12 @@ export async function refreshDirectoryCountsIfExpired(): Promise<DirectoryCounts
     ]);
 
     const dbVenues = venuesRes.count ?? 0;
-    const actualVenueCount = Math.max(MUSIC_VENUES.length, dbVenues > MUSIC_VENUES.length ? dbVenues : MUSIC_VENUES.length + dbVenues);
-    const rawBands = bandsRes.count ?? BASELINE_BAND_COUNT;
+    const actualVenueCount = dbVenues > 0 ? dbVenues : 669;
+    const dbBands = bandsRes.count ?? 0;
+    const actualBandCount = dbBands > 0 ? dbBands : 4863;
 
     const roundedVenues = roundToNearest50(actualVenueCount);
-    const roundedBands = roundToNearest50(rawBands);
+    const roundedBands = roundToNearest50(actualBandCount);
 
     const freshCounts: DirectoryCounts = {
       venueCount: roundedVenues,

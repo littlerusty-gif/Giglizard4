@@ -1021,7 +1021,7 @@ export default function Home({
               <h1 className="text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.16] text-white [text-wrap:balance]">
                 Independent Bands: Find Venues, Book Shows —{" "}
                 <span className="block sm:inline text-indigo-300 sm:text-slate-350 text-lg sm:text-2xl lg:text-3xl font-extrabold sm:font-bold mt-1.5 sm:mt-0">
-                  4,800+ Bookable Rooms Across the Lower 48
+                  {venueCountStr} Venues Across the Lower 48
                 </span>
               </h1>
 
@@ -1173,7 +1173,7 @@ export default function Home({
                   {heroRole === "Guest" ? (
                     <div className="space-y-3 py-1">
                       <p className="text-xs text-slate-300 leading-snug">
-                        Instant access to 4,800+ venues, drag-and-drop stage plots, and van fuel calculators with zero password or signup friction.
+                        Instant access to {venueCountStr} venues, drag-and-drop stage plots, and van fuel calculators with zero password or signup friction.
                       </p>
                       <button
                         type="button"

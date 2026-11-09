@@ -690,6 +690,12 @@ export default function GigLizardApp() {
         pageDesc = "10 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.";
         canonicalHref = "https://www.giglizard.us/articles";
       }
+    } else if (activeTab === "blog") {
+      if (selectedBlogSlug) {
+        canonicalHref = `https://www.giglizard.us/blog/${selectedBlogSlug}`;
+      } else {
+        canonicalHref = "https://www.giglizard.us/blog";
+      }
     } else if (activeTab === "venues" && programmaticVenueRoute) {
       pageTitle = programmaticVenueRoute.title;
       pageDesc = programmaticVenueRoute.description;
@@ -722,14 +728,20 @@ export default function GigLizardApp() {
       let ogUrl = document.querySelector('meta[property="og:url"]');
       if (ogUrl) ogUrl.setAttribute("content", canonicalHref);
 
+      let ogImage = document.querySelector('meta[property="og:image"]');
+      if (ogImage) ogImage.setAttribute("content", "https://www.giglizard.us/giglizard_logo.png");
+
       // 4. Update Twitter Card tags
       let twTitle = document.querySelector('meta[name="twitter:title"]');
       if (twTitle) twTitle.setAttribute("content", pageTitle);
 
       let twDesc = document.querySelector('meta[name="twitter:description"]');
       if (twDesc) twDesc.setAttribute("content", pageDesc);
+
+      let twImage = document.querySelector('meta[name="twitter:image"]');
+      if (twImage) twImage.setAttribute("content", "https://www.giglizard.us/giglizard_logo.png");
     } catch (_) {}
-  }, [activeTab, programmaticVenueRoute]);
+  }, [activeTab, programmaticVenueRoute, selectedArticleSlug, selectedBlogSlug]);
 
   // Track page visit on mount and tab switch
   useEffect(() => {

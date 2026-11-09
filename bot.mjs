@@ -43,7 +43,7 @@ const BUFFER_ACCESS_TOKEN = process.env.BUFFER_ACCESS_TOKEN || process.env.BUFFE
 const BUFFER_CHANNEL_ID = process.env.BUFFER_CHANNEL_ID || process.env.BUFFER_PROFILE_ID;
 const BUFFER_GRAPHQL_URL = 'https://api.buffer.com';
 
-const DEFAULT_IMAGE_URL = process.env.DEFAULT_IMAGE_URL || "https://giglizard.us/og-image.png";
+const DEFAULT_IMAGE_URL = process.env.DEFAULT_IMAGE_URL || "https://www.giglizard.us/og-image.png";
 const DRY_RUN = isDryRunArg || process.env.DRY_RUN === 'true' || !BUFFER_ACCESS_TOKEN;
 
 // 2. Day-of-Week Schedule & Task Configurations

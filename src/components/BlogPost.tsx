@@ -33,16 +33,17 @@ export default function BlogPost({ slug, onNavigateBlogIndex, onNavigateHome }: 
         } else {
           setArticle(art);
 
+          const articleUrl = `https://www.giglizard.us/blog/${art.slug}`;
+          const articleTitle = art.title ? `${art.title} | GigLizard` : "GigLizard Blog";
+          const articleDesc = art.meta_description || "Actionable DIY touring guides, venue booking strategies, and road wisdom from GigLizard.";
+
           // Dynamically update document title and meta description
-          if (art.title) {
-            document.title = `${art.title} | GigLizard`;
+          document.title = articleTitle;
+          const metaDesc = document.querySelector('meta[name="description"]');
+          if (metaDesc) {
+            metaDesc.setAttribute("content", articleDesc);
           }
-          if (art.meta_description) {
-            const metaDesc = document.querySelector('meta[name="description"]');
-            if (metaDesc) {
-              metaDesc.setAttribute("content", art.meta_description);
-            }
-          }
+
           // Set canonical
           let canonical = document.querySelector('link[rel="canonical"]');
           if (!canonical) {
@@ -50,7 +51,23 @@ export default function BlogPost({ slug, onNavigateBlogIndex, onNavigateHome }: 
             canonical.setAttribute("rel", "canonical");
             document.head.appendChild(canonical);
           }
-          canonical.setAttribute("href", `https://www.giglizard.us/blog/${art.slug}`);
+          canonical.setAttribute("href", articleUrl);
+
+          // Update OpenGraph tags
+          const ogTitle = document.querySelector('meta[property="og:title"]');
+          if (ogTitle) ogTitle.setAttribute("content", articleTitle);
+          const ogDesc = document.querySelector('meta[property="og:description"]');
+          if (ogDesc) ogDesc.setAttribute("content", articleDesc);
+          const ogUrl = document.querySelector('meta[property="og:url"]');
+          if (ogUrl) ogUrl.setAttribute("content", articleUrl);
+          const ogType = document.querySelector('meta[property="og:type"]');
+          if (ogType) ogType.setAttribute("content", "article");
+
+          // Update Twitter tags
+          const twTitle = document.querySelector('meta[name="twitter:title"]');
+          if (twTitle) twTitle.setAttribute("content", articleTitle);
+          const twDesc = document.querySelector('meta[name="twitter:description"]');
+          if (twDesc) twDesc.setAttribute("content", articleDesc);
 
           // Set JSON-LD if provided
           if (art.jsonLd && Object.keys(art.jsonLd).length > 0) {
@@ -63,9 +80,10 @@ export default function BlogPost({ slug, onNavigateBlogIndex, onNavigateHome }: 
               document.head.appendChild(scriptTag);
             }
             const structuredData = { ...art.jsonLd };
-            if (!structuredData.url) {
-              structuredData.url = `https://www.giglizard.us/blog/${art.slug}`;
-              structuredData.mainEntityOfPage = `https://www.giglizard.us/blog/${art.slug}`;
+            structuredData.url = articleUrl;
+            structuredData.mainEntityOfPage = articleUrl;
+            if (structuredData.publisher && typeof structuredData.publisher === "object") {
+              structuredData.publisher.url = "https://www.giglizard.us";
             }
             scriptTag.textContent = JSON.stringify(structuredData).replace(/</g, "\\u003c");
           }

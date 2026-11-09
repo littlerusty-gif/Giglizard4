@@ -416,7 +416,7 @@ export default function StagePlotDesigner({
       try {
         const result = await fetchBandStagePlotFromDatabase({
           userId: effectiveUserId,
-          officialEmail: contactEmail || (bandProfile?.name ? `${bandProfile.name.toLowerCase().replace(/\s+/g, "")}@giglizard.com` : "booking@giglizard.us"),
+          officialEmail: contactEmail || (bandProfile?.name ? `${bandProfile.name.toLowerCase().replace(/\s+/g, "")}@giglizard.us` : "booking@giglizard.us"),
           bandId: effectiveBandId
         });
 

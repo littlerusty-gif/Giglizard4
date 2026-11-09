@@ -1420,13 +1420,13 @@ export default function AdminDashboard({ currentAccount, onSwitchAccount }: Admi
                   const val = e.target.value;
                   if (val === "tour") {
                     setBroadcastSubject("GigLizard: Plan your next regional tour with AI Routing");
-                    setBroadcastBody(`Hello Artists & Bookers,\n\nWe just launched the GigLizard Smart Tour Planner! You can now map out multi-city routes, estimate gas costs, and match indie venues in seconds.\n\nTry it free today:\nhttps://giglizard.com#tour\n\nBest,\nRusty (giglizard.us@gmail.com)`);
+                    setBroadcastBody(`Hello Artists & Bookers,\n\nWe just launched the GigLizard Smart Tour Planner! You can now map out multi-city routes, estimate gas costs, and match indie venues in seconds.\n\nTry it free today:\nhttps://www.giglizard.us/tour\n\nBest,\nRusty (giglizard.us@gmail.com)`);
                   } else if (val === "renewal") {
                     setBroadcastSubject("GigLizard: 30-Day Venue All-Access Pass Renewal Notice");
-                    setBroadcastBody(`Hi there,\n\nYour 30-Day Venue All-Access Pass is keeping your booking pipeline full! Renew or check upcoming gigs in your city here:\nhttps://giglizard.com#venues\n\nThanks for supporting independent live music!`);
+                    setBroadcastBody(`Hi there,\n\nYour 30-Day Venue All-Access Pass is keeping your booking pipeline full! Renew or check upcoming gigs in your city here:\nhttps://www.giglizard.us/venues\n\nThanks for supporting independent live music!`);
                   } else if (val === "reviews") {
                     setBroadcastSubject("GigLizard: Rate and review venues & bands from your recent gigs");
-                    setBroadcastBody(`Hey everyone,\n\nDid you play a killer show recently? Leave a 5-star review for the venue or artist on GigLizard to help other touring musicians navigate the road!\n\nLeave a review:\nhttps://giglizard.com#bands`);
+                    setBroadcastBody(`Hey everyone,\n\nDid you play a killer show recently? Leave a 5-star review for the venue or artist on GigLizard to help other touring musicians navigate the road!\n\nLeave a review:\nhttps://www.giglizard.us/bands`);
                   }
                 }}
                 className="w-full text-xs p-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-medium text-slate-700"

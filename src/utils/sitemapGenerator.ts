@@ -307,16 +307,51 @@ export function getSitemapEntries(): SitemapEntry[] {
 }
 
 /**
+ * Normalizes a URL for canonical and sitemap standards:
+ * - Upgrades any apex (giglizard.us), http, or relative path to strictly https://www.giglizard.us
+ * - Removes non-root trailing slash to prevent unnecessary 301 redirects
+ */
+export function normalizeSitemapUrl(url: string): string {
+  if (!url) return "https://www.giglizard.us/";
+  let normalized = url.trim();
+
+  // Replace relative paths or any domain with https://www.giglizard.us
+  if (normalized.startsWith("/")) {
+    normalized = `https://www.giglizard.us${normalized}`;
+  } else {
+    normalized = normalized.replace(/^https?:\/\/(www\.)?giglizard\.us/i, "https://www.giglizard.us");
+    if (!normalized.startsWith("https://www.giglizard.us")) {
+      // If it doesn't start with the standardized domain, prepend or fix it
+      normalized = normalized.replace(/^https?:\/\/[^/]+/i, "https://www.giglizard.us");
+    }
+  }
+
+  // Remove trailing slash unless it's just the root domain https://www.giglizard.us/
+  if (normalized.length > "https://www.giglizard.us/".length && normalized.endsWith("/")) {
+    normalized = normalized.slice(0, -1);
+  }
+
+  return normalized;
+}
+
+/**
  * Builds standard XML sitemap from entries array
  */
 export function buildSitemapXmlFromEntries(entries: SitemapEntry[]): string {
-  // Deduplicate entries by URL
+  // Deduplicate and normalize entries by URL
   const seenUrls = new Set<string>();
-  const uniqueEntries = entries.filter((e) => {
-    if (seenUrls.has(e.url)) return false;
-    seenUrls.add(e.url);
-    return true;
-  });
+  const uniqueEntries: SitemapEntry[] = [];
+
+  for (const entry of entries) {
+    const cleanUrl = normalizeSitemapUrl(entry.url);
+    if (!seenUrls.has(cleanUrl)) {
+      seenUrls.add(cleanUrl);
+      uniqueEntries.push({
+        ...entry,
+        url: cleanUrl
+      });
+    }
+  }
 
   const xmlNodes = uniqueEntries
     .map(

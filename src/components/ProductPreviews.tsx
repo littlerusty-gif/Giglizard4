@@ -23,7 +23,7 @@ export function VenueDirectoryScreenshot({ className = "" }: { className?: strin
           <span className="w-2.5 h-2.5 rounded-full bg-rose-500/80 inline-block" />
           <span className="w-2.5 h-2.5 rounded-full bg-amber-500/80 inline-block" />
           <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80 inline-block" />
-          <span className="text-slate-400 font-mono ml-2 text-[10px]">giglizard.us/venues</span>
+          <span className="text-slate-400 font-mono ml-2 text-[10px]">www.giglizard.us/venues</span>
         </div>
         <div className="flex items-center gap-2 text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/40">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />

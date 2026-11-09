@@ -23,7 +23,7 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     title: "Free Stage Plot Maker & Band Stage Designer | GigLizard",
     description: "Design free professional stage plots online with drag-and-drop drums, amps, microphones, monitors, and inputs. Export 300 DPI print-ready PDF & PNG tech sheets for sound engineers.",
     keywords: "free stage plot maker, stage plot designer, online stage plot creator, band stage plot template, stage layout builder, music stage plot generator, live concert stage plot",
-    canonicalUrl: "https://www.giglizard.us/plot"
+    canonicalUrl: "https://www.giglizard.us/tools/stage-plot"
   },
   rider: {
     title: "Live Sound Tech Rider Builder & Input Patch List Maker | GigLizard",
@@ -53,7 +53,7 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     title: "Concert Poster Designer & Gig Flyer Maker Studio | GigLizard",
     description: "Create high-impact concert gig flyers and tour posters with vintage halftone, psychedelic grunge, and neon cyber aesthetics. Instant social and print export.",
     keywords: "gig flyer maker, concert poster designer, band flyer generator, show poster creator, live event graphic maker, indie music poster template",
-    canonicalUrl: "https://www.giglizard.us/poster"
+    canonicalUrl: "https://www.giglizard.us/tools/poster-designer"
   },
   pricing: {
     title: "Transparent Musician Pricing - Free Venue Tools & $9.99 Pass | GigLizard",
@@ -83,7 +83,7 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     title: "The Independent DIY Touring Playbook & Booking Guide | GigLizard",
     description: "Step-by-step master guide for booking independent tours, emailing talent buyers, designing soundboard tech riders, routing highway corridors, and packing rooms.",
     keywords: "diy touring guide, how to book band tour, emailing talent buyers, band tour booking template, venue outreach guide",
-    canonicalUrl: "https://www.giglizard.us/guide"
+    canonicalUrl: "https://www.giglizard.us/touring-guide"
   },
   changelog: {
     title: "Changelog & Product Updates | GigLizard",
@@ -114,6 +114,24 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     description: "Actionable tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, soundcheck etiquette, and deal negotiation.",
     keywords: "diy tour advice, band touring articles, how to route band tour, stage plot guide, cold email talent buyers, band van maintenance",
     canonicalUrl: "https://www.giglizard.us/articles"
+  },
+  blog: {
+    title: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
+    description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
+    keywords: "music venue blog, diy band tour advice, live music booking tips, stage plot advice",
+    canonicalUrl: "https://www.giglizard.us/blog"
+  },
+  privacy: {
+    title: "GigLizard Privacy Policy - Data Protection & Cookie Disclosures",
+    description: "GigLizard Privacy Policy: Learn how we protect artist, band, and venue data, and our policies on cookies, third-party advertising, and payment security.",
+    keywords: "giglizard privacy policy, artist data protection, cookie policy",
+    canonicalUrl: "https://www.giglizard.us/privacy"
+  },
+  contact: {
+    title: "Contact GigLizard - Direct Founder & Booking Support",
+    description: "Contact Little Rusty and the GigLizard team for venue moderation reports, artist support, or direct questions. Direct response within 4 hours.",
+    keywords: "contact giglizard, little rusty portland, music venue support",
+    canonicalUrl: "https://www.giglizard.us/contact"
   }
 };
 

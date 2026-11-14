@@ -71,6 +71,19 @@ export interface TechRider {
   governingState?: string;
 }
 
+export type PosterTypeId = "single-show" | "tour-dates" | "album-release" | "festival-bill" | "social-promo";
+export type PosterAspectRatio = "2:3" | "4:5" | "1:1" | "9:16";
+export type PosterLayoutId = "centered" | "editorial-left" | "bold-stack" | "split-band";
+export type PosterFrameStyle = "solid" | "double" | "brutalist" | "dashed" | "corners" | "bleed";
+export type PosterTextureId = "none" | "halftone" | "scanlines" | "diagonal" | "grid" | "radial" | "grain";
+export type PosterEmblemId = "none" | "vinyl" | "lightning" | "skull" | "floral" | "sun" | "waves" | "starburst" | "guitar" | "crosshair";
+
+export interface PosterTourDate {
+  date: string;
+  city: string;
+  venue: string;
+}
+
 export interface PosterConfig {
   bandName: string;
   supportingActs?: string; // Supporting acts / opening bands appearing under headliner
@@ -87,9 +100,29 @@ export interface PosterConfig {
     merchArea: boolean;
   };
   extraDetails: string; // e.g. "Limited tickets at the door. No dynamic parking."
-  themeId: string; // "heavy-grunge" | "retro-neon" | "indie-minimal" | "folk-acoustic"
+  themeId: string; // "heavy-grunge" | "retro-neon" | "indie-minimal" | "folk-acoustic" etc.
   colorId?: string; // custom color swatch override e.g. "default", "red", "blue", "green", "purple", "amber", "pink", "black"
-  fontStyle?: string; // custom typography style e.g. "impact", "serif", "clean", "mono", "distressed"
+  fontStyle?: string; // custom typography style
+  posterType?: PosterTypeId;
+  aspectRatio?: PosterAspectRatio;
+  layoutId?: PosterLayoutId;
+  frameStyle?: PosterFrameStyle;
+  textureId?: PosterTextureId;
+  emblemId?: PosterEmblemId;
+  headlineScale?: number; // 0.8 to 1.35
+  letterSpacing?: "tight" | "normal" | "wide";
+  customColors?: {
+    bg?: string;
+    text?: string;
+    accent?: string;
+  };
+  customImageUrl?: string; // Data URL image uploaded by the artist
+  imageOpacity?: number; // 0.15 to 0.85
+  showBleedGuides?: boolean;
+  albumTitle?: string;
+  festivalName?: string;
+  ticketUrl?: string;
+  tourDates?: PosterTourDate[];
 }
 
 export interface SloganProposal {

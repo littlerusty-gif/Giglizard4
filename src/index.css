@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Playfair+Display:ital,wght@0,450;0,700;0,900;1,400;1,700;1,900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Anton&family=Bebas+Neue&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=Fraunces:ital,opsz,wght@0,9..144,700;0,9..144,900;1,9..144,700&family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Oswald:wght@500;700&family=Playfair+Display:ital,wght@0,450;0,700;0,900;1,400;1,700;1,900&family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -19,6 +19,16 @@ html, body {
 .Playfair {
   font-family: 'Playfair Display', serif;
 }
+
+/* Concert Poster Studio Canvas Typography */
+.poster-font-anton { font-family: 'Anton', Impact, sans-serif; }
+.poster-font-bebas { font-family: 'Bebas Neue', Impact, sans-serif; }
+.poster-font-oswald { font-family: 'Oswald', sans-serif; }
+.poster-font-fraunces { font-family: 'Fraunces', Georgia, serif; }
+.poster-font-syne { font-family: 'Syne', sans-serif; }
+.poster-font-grotesk { font-family: 'Space Grotesk', sans-serif; }
+.poster-font-courier { font-family: 'Courier Prime', monospace; }
+.poster-font-mono { font-family: 'JetBrains Mono', monospace; }
 
 /* Fade-in transitions */
 .animate-fade-in {

@@ -1669,7 +1669,7 @@ export default function Home({
           
           {/* Feature 1: Stage Plot Designer */}
           <a 
-            href="/plot"
+            href="/tools/stage-plot"
             onClick={(e) => {
               e.preventDefault();
               onSelectTab("plot");
@@ -1683,7 +1683,7 @@ export default function Home({
                   <Sliders className="w-5 h-5" />
                 </div>
                 <span className="text-xs text-orange-700 font-semibold">
-                  Dedicated Tool (/plot)
+                  Free Stage Plot Tool
                 </span>
               </div>
               <div>
@@ -1745,7 +1745,7 @@ export default function Home({
 
           {/* Feature 3: Concert Poster Designer */}
           <a 
-            href="/poster"
+            href="/tools/poster-designer"
             onClick={(e) => {
               e.preventDefault();
               onSelectTab("poster");
@@ -1759,7 +1759,7 @@ export default function Home({
                   <Image className="w-5 h-5" />
                 </div>
                 <span className="text-xs text-emerald-700 font-semibold">
-                  Dedicated Tool (/poster)
+                  Free Print Studio
                 </span>
               </div>
               <div>

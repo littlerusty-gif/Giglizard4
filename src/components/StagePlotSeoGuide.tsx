@@ -253,6 +253,49 @@ export default function StagePlotSeoGuide() {
         </div>
       </div>
 
+      {/* Step-by-Step: How to Build a Stage Plot & Input List Best Practices */}
+      <div className="space-y-4">
+        <div className="border-b border-slate-200 pb-3">
+          <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <FileText className="w-5 h-5 text-indigo-600" />
+            <span>How to Build a Stage Plot &amp; Input List Best Practices</span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Follow this four-step advance workflow so house engineers can wire your stage in under 15 minutes during multi-band club changeovers.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">1. Orient From Audience Perspective (FOH View)</h4>
+            <p className="text-slate-600 leading-relaxed">
+              Always label <strong>Stage Left</strong> and <strong>Stage Right</strong> from the performer&apos;s perspective facing the crowd, while placing the audience at the bottom edge of the diagram. Upstage sits at the top of the sheet where your drum riser and backline cabinets live, and downstage sits at the bottom where vocal mics and floor wedges sit.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">2. Mark AC Power Drops &amp; Backline Details</h4>
+            <p className="text-slate-600 leading-relaxed">
+              Specify every 120V AC power quad-box location (downstage pedalboards, keyboard stand, bass rig, drum sampler). Indicate if you are bringing your own drum shells, breakables, or amplifier cabinets so festival and club production managers can coordinate shared backline swaps cleanly.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">3. Input List Best Practices (+48V &amp; Stand Types)</h4>
+            <p className="text-slate-600 leading-relaxed">
+              Never send an input list without mic stand heights and phantom power notes. Explicitly flag every channel that needs <strong>+48V phantom power</strong> (active DI boxes, drum overheads, condenser vocal mics) and distinguish tall boom stands from short kick/cabinet stands so stagehands pull the right hardware from the locker.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">4. Separate Monitor Mix Requests &amp; Date Stamp</h4>
+            <p className="text-slate-600 leading-relaxed">
+              List exactly what each band member wants in their floor wedge (Mix 1–4) or wireless IEM pack, keeping mixes realistic (lead vocal + kick/snare + reference guitar). Always put your band name, tour manager phone number, and a <strong>&ldquo;Last Updated&rdquo;</strong> date in the header so engineers know the patch matches your current lineup.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Frequently Asked Questions Section (FAQPage Schema Parity) */}
       <div className="space-y-4">
         <div className="border-b border-slate-200 pb-3">

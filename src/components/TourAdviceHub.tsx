@@ -85,21 +85,21 @@ export default function TourAdviceHub({
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-amber-500/20 flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Stage Plot Maker (/plot)</span>
+              <span>Stage Plot Maker</span>
             </button>
             <button
               onClick={() => onSelectTab("rider")}
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-cyan-300 border border-cyan-500/20 flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <FileText className="w-3.5 h-3.5" />
-              <span>Tech Rider Builder (/rider)</span>
+              <span>Tech Rider Builder</span>
             </button>
             <button
               onClick={() => onSelectTab("poster")}
               className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-emerald-300 border border-emerald-500/20 flex items-center gap-1.5 cursor-pointer transition-colors"
             >
               <Palette className="w-3.5 h-3.5" />
-              <span>Poster Studio (/poster)</span>
+              <span>Poster Studio</span>
             </button>
           </div>
         </div>

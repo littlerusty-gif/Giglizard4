@@ -52,7 +52,7 @@ const DEFAULT_RELATED_LINKS: RelatedLinkItem[] = [
   {
     title: "Drag-and-Drop Stage Plot Maker",
     description: "Design drum risers, amp stacks, and monitor sends with instant 300 DPI PDF export.",
-    path: "/plot",
+    path: "/tools/stage-plot",
     icon: "plot"
   },
   {
@@ -124,8 +124,13 @@ export function RelatedLinks({
   const handleClick = (e: React.MouseEvent, path: string) => {
     if (onSelectTab) {
       e.preventDefault();
-      const tab = path.replace(/^\//, "");
-      onSelectTab(tab || "home");
+      const raw = path.replace(/^\//, "");
+      const tab =
+        raw === "tools/stage-plot" ? "plot" :
+        raw === "tools/poster-designer" ? "poster" :
+        raw === "touring-guide" ? "guide" :
+        raw || "home";
+      onSelectTab(tab);
       window.history.pushState(null, "", path);
       window.scrollTo({ top: 0, behavior: "smooth" });
     }

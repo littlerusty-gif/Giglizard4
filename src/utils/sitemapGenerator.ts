@@ -1,43 +1,22 @@
 /**
- * Dynamic XML Sitemap Generator for GigLizard.
+ * XML Sitemap Generator for GigLizard.
  * Generates standards-compliant XML (sitemaps.org schema 0.9)
- * containing:
- * 1. Core pages (Home, Venues, Bands, Tour, Plot, Rider, Poster, Pricing, Compare, etc.)
- * 2. Programmatic City & State routes (/venues/[location], e.g. /venues/portland-or, /venues/austin-tx)
- * 3. Individual Venue profile routes (/venues/:location/:venueSlug and /venues/venue/:venueId)
- * All city routes and venue profile URLs are given priority 0.8 and weekly changefreq for Google crawlers.
+ * containing ONLY our 23 canonical high-value core pages and tour playbooks:
+ * - /
+ * - /venues, /bands, /tour
+ * - /tools/stage-plot, /tools/poster-designer
+ * - /touring-guide
+ * - /articles + 10 /articles/:slug playbooks
+ * - /about, /pricing, /compare, /privacy, /contact
  */
 
-import { POPULAR_TOURING_CITIES, POPULAR_GENRE_CITY_ROUTES } from "./venueSeoRoutes";
-import { MUSIC_VENUES } from "../data/venues";
 import { TOUR_ARTICLES } from "../data/tourArticles";
-import { fetchAllHeyCatchArticles } from "./heycatchBlog";
 
 export interface SitemapEntry {
   url: string;
   lastmod: string;
   changefreq: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
   priority: string;
-}
-
-const PRIMARY_GENRES = [
-  "rock",
-  "punk",
-  "indie",
-  "metal",
-  "folk",
-  "electronic",
-  "hip-hop",
-  "blues",
-  "jazz"
-];
-
-function makeSlug(text: string): string {
-  return text
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 // In-memory cache for dynamic sitemap with 30-minute TTL
@@ -71,7 +50,7 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
     priority: "0.95"
   });
 
-  // 2. Production & Touring Tools (100% Free Forever)
+  // 2. Production & Touring Tools (Canonical Tool URLs Only)
   entries.push({
     url: "https://www.giglizard.us/tour",
     lastmod: today,
@@ -83,38 +62,48 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
     url: "https://www.giglizard.us/tools/stage-plot",
     lastmod: today,
     changefreq: "weekly",
-    priority: "0.9"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/plot",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.9"
+    priority: "0.90"
   });
 
   entries.push({
     url: "https://www.giglizard.us/tools/poster-designer",
     lastmod: today,
     changefreq: "weekly",
-    priority: "0.9"
+    priority: "0.90"
   });
 
+  // 3. Touring Guide & Editorial Playbooks
   entries.push({
-    url: "https://www.giglizard.us/poster",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.9"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/rider",
+    url: "https://www.giglizard.us/touring-guide",
     lastmod: today,
     changefreq: "weekly",
     priority: "0.85"
   });
 
-  // 3. Pricing, Platform Comparisons & Features
+  entries.push({
+    url: "https://www.giglizard.us/articles",
+    lastmod: today,
+    changefreq: "weekly",
+    priority: "0.90"
+  });
+
+  TOUR_ARTICLES.slice(0, 10).forEach(article => {
+    entries.push({
+      url: `https://www.giglizard.us/articles/${article.slug}`,
+      lastmod: article.updatedDate || today,
+      changefreq: "monthly",
+      priority: "0.85"
+    });
+  });
+
+  // 4. Core Information, Pricing & Legal Pages
+  entries.push({
+    url: "https://www.giglizard.us/about",
+    lastmod: today,
+    changefreq: "monthly",
+    priority: "0.80"
+  });
+
   entries.push({
     url: "https://www.giglizard.us/pricing",
     lastmod: today,
@@ -126,90 +115,11 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
     url: "https://www.giglizard.us/compare",
     lastmod: today,
     changefreq: "weekly",
-    priority: "0.90"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/vs/sonicbids",
-    lastmod: today,
-    changefreq: "weekly",
     priority: "0.85"
   });
 
-  entries.push({
-    url: "https://www.giglizard.us/vs/prism-fm",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.85"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/vs/gigwell",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.85"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/features",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.85"
-  });
-
-  // 4. Mission, Guides, Changelog, Verification & Trust
-  entries.push({
-    url: "https://www.giglizard.us/about",
-    lastmod: today,
-    changefreq: "monthly",
-    priority: "0.80"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/changelog",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.80"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/customers",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.80"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/touring-guide",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.80"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/faq",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.80"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/verification",
-    lastmod: today,
-    changefreq: "daily",
-    priority: "0.85"
-  });
-
-  // Legal & Privacy Policy
   entries.push({
     url: "https://www.giglizard.us/privacy",
-    lastmod: today,
-    changefreq: "monthly",
-    priority: "0.70"
-  });
-
-  entries.push({
-    url: "https://www.giglizard.us/privacy-policy",
     lastmod: today,
     changefreq: "monthly",
     priority: "0.70"
@@ -222,88 +132,11 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
     priority: "0.75"
   });
 
-  // 5. Tour Advice Master Articles (10 Dedicated Playbooks)
-  entries.push({
-    url: "https://www.giglizard.us/articles",
-    lastmod: today,
-    changefreq: "weekly",
-    priority: "0.90"
-  });
-
-  TOUR_ARTICLES.forEach(article => {
-    entries.push({
-      url: `https://www.giglizard.us/articles/${article.slug}`,
-      lastmod: article.updatedDate || today,
-      changefreq: "monthly",
-      priority: "0.85"
-    });
-  });
-
-  // 6. HeyCatch Blog Hub
-  entries.push({
-    url: "https://www.giglizard.us/blog",
-    lastmod: today,
-    changefreq: "daily",
-    priority: "0.85"
-  });
-
-  // 5. Popular Genre Hubs (e.g. /venues/rock, /venues/punk)
-  for (const genre of PRIMARY_GENRES) {
-    entries.push({
-      url: `https://www.giglizard.us/venues/${genre}`,
-      lastmod: today,
-      changefreq: "weekly",
-      priority: "0.80"
-    });
-  }
-
-  // 6. Popular Genre + City Circuits (e.g. /venues/rock/chicago)
-  for (const circuit of POPULAR_GENRE_CITY_ROUTES) {
-    entries.push({
-      url: `https://www.giglizard.us/venues/${circuit.slug}`,
-      lastmod: today,
-      changefreq: "weekly",
-      priority: "0.80"
-    });
-  }
-
   return entries;
 }
 
 export function getSitemapEntries(): SitemapEntry[] {
-  const entries = getCoreSitemapEntries();
-  const today = new Date().toISOString().split("T")[0];
-
-  // Static fallback popular cities
-  for (const city of POPULAR_TOURING_CITIES) {
-    entries.push({
-      url: `https://www.giglizard.us/venues/${city.slug}`,
-      lastmod: today,
-      changefreq: "weekly",
-      priority: "0.8"
-    });
-  }
-
-  // Static fallback local venues
-  for (const v of MUSIC_VENUES) {
-    const citySlug = makeSlug(v.city || "seattle");
-    const stateSlug = (v.state || "wa").toLowerCase();
-    const venueSlug = makeSlug(v.name);
-    entries.push({
-      url: `https://www.giglizard.us/venues/${citySlug}-${stateSlug}/${venueSlug}`,
-      lastmod: today,
-      changefreq: "weekly",
-      priority: "0.8"
-    });
-    entries.push({
-      url: `https://www.giglizard.us/venues/venue/${v.id}`,
-      lastmod: today,
-      changefreq: "weekly",
-      priority: "0.8"
-    });
-  }
-
-  return entries;
+  return getCoreSitemapEntries();
 }
 
 /**
@@ -321,7 +154,6 @@ export function normalizeSitemapUrl(url: string): string {
   } else {
     normalized = normalized.replace(/^https?:\/\/(www\.)?giglizard\.us/i, "https://www.giglizard.us");
     if (!normalized.startsWith("https://www.giglizard.us")) {
-      // If it doesn't start with the standardized domain, prepend or fix it
       normalized = normalized.replace(/^https?:\/\/[^/]+/i, "https://www.giglizard.us");
     }
   }
@@ -371,135 +203,20 @@ ${xmlNodes}
 }
 
 export function generateSitemapXml(): string {
-  return buildSitemapXmlFromEntries(getSitemapEntries());
+  return buildSitemapXmlFromEntries(getCoreSitemapEntries());
 }
 
 /**
- * Dynamic XML Sitemap Generator that queries all unique city + state pairs
- * and individual venue IDs from Supabase public.venues table.
- *
- * All city routes and venue profile URLs are generated with:
- * - priority: 0.8
- * - changefreq: weekly
+ * Consolidated XML Sitemap Generator serving ONLY our 23 high-value canonical URLs.
+ * Keeps parameter signature compatible with server.ts while excluding thin programmatic permutations.
  */
-export async function generateDynamicSupabaseSitemap(supabaseClient?: any): Promise<string> {
+export async function generateDynamicSupabaseSitemap(_supabaseClient?: any): Promise<string> {
   const now = Date.now();
   if (cachedSitemapXml && now - lastSitemapGeneratedAt < SITEMAP_CACHE_TTL_MS) {
     return cachedSitemapXml;
   }
 
-  const today = new Date().toISOString().split("T")[0];
-  const entries: SitemapEntry[] = [...getCoreSitemapEntries()];
-
-  // Track unique city-state paths and venue URLs to ensure no duplicates
-  const cityRoutes = new Set<string>();
-  const venueRoutes = new Set<string>();
-
-  try {
-    let venuesData: Array<{ id: string; name: string; city: string; state: string }> = [];
-
-    if (supabaseClient) {
-      const { data, error } = await supabaseClient
-        .from("venues")
-        .select("id, name, city, state");
-
-      if (!error && Array.isArray(data)) {
-        venuesData = data;
-      }
-    }
-
-    // Also blend local curated venues to ensure total coverage
-    MUSIC_VENUES.forEach((mv) => {
-      venuesData.push({
-        id: mv.id,
-        name: mv.name,
-        city: mv.city,
-        state: mv.state || "WA"
-      });
-    });
-
-    // Popular touring cities guarantee
-    POPULAR_TOURING_CITIES.forEach((pc) => {
-      const route = `https://www.giglizard.us/venues/${pc.slug}`;
-      cityRoutes.add(route);
-      entries.push({
-        url: route,
-        lastmod: today,
-        changefreq: "weekly",
-        priority: "0.8"
-      });
-    });
-
-    for (const v of venuesData) {
-      if (v.city && v.state) {
-        const citySlug = makeSlug(v.city);
-        const stateSlug = v.state.toLowerCase().trim();
-        const cityUrl = `https://www.giglizard.us/venues/${citySlug}-${stateSlug}`;
-
-        if (!cityRoutes.has(cityUrl)) {
-          cityRoutes.add(cityUrl);
-          entries.push({
-            url: cityUrl,
-            lastmod: today,
-            changefreq: "weekly",
-            priority: "0.8"
-          });
-        }
-
-        if (v.name) {
-          const venueSlug = makeSlug(v.name);
-          const venueUrl = `https://www.giglizard.us/venues/${citySlug}-${stateSlug}/${venueSlug}`;
-          if (!venueRoutes.has(venueUrl)) {
-            venueRoutes.add(venueUrl);
-            entries.push({
-              url: venueUrl,
-              lastmod: today,
-              changefreq: "weekly",
-              priority: "0.8"
-            });
-          }
-        }
-      }
-
-      // Individual venue ID URL
-      if (v.id) {
-        const venueIdUrl = `https://www.giglizard.us/venues/venue/${v.id}`;
-        if (!venueRoutes.has(venueIdUrl)) {
-          venueRoutes.add(venueIdUrl);
-          entries.push({
-            url: venueIdUrl,
-            lastmod: today,
-            changefreq: "weekly",
-            priority: "0.8"
-          });
-        }
-      }
-    }
-
-    // Dynamic HeyCatch Blog Articles (/blog/{slug})
-    try {
-      const blogData = await fetchAllHeyCatchArticles();
-      if (blogData && blogData.articles && blogData.articles.length > 0) {
-        blogData.articles.forEach(article => {
-          if (article.slug) {
-            const articleUrl = `https://www.giglizard.us/blog/${article.slug}`;
-            entries.push({
-              url: articleUrl,
-              lastmod: article.updated || article.published || today,
-              changefreq: "weekly",
-              priority: "0.80"
-            });
-          }
-        });
-      }
-    } catch (blogErr) {
-      console.warn("Could not load HeyCatch articles for sitemap:", blogErr);
-    }
-  } catch (err) {
-    console.error("Error generating dynamic Supabase sitemap:", err);
-  }
-
-  const generatedXml = buildSitemapXmlFromEntries(entries);
+  const generatedXml = buildSitemapXmlFromEntries(getCoreSitemapEntries());
   cachedSitemapXml = generatedXml;
   lastSitemapGeneratedAt = now;
 

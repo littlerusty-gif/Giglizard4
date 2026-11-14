@@ -36,6 +36,7 @@ interface BandDirectoryProps {
   currentAccount?: UserAccount | null;
   currentUser?: any | null;
   isAuthLoading?: boolean;
+  initialFilter?: string | null;
   onTriggerUpgrade?: () => void;
   onTriggerLogin?: () => void;
   onUpdateAccount?: (account: UserAccount) => void;
@@ -47,6 +48,7 @@ export default function BandDirectory({
   currentAccount,
   currentUser,
   isAuthLoading,
+  initialFilter,
   onTriggerUpgrade,
   onTriggerLogin,
   onUpdateAccount,
@@ -59,6 +61,34 @@ export default function BandDirectory({
   const [selectedLevel, setSelectedLevel] = useState("All");
   const [selectedRatingFilter, setSelectedRatingFilter] = useState("All");
   const [selectedAgencyFilter, setSelectedAgencyFilter] = useState<"All" | "Agency" | "Direct">("All");
+
+  // Apply URL filter slug when navigating to /bands/:filter
+  useEffect(() => {
+    if (!initialFilter) return;
+    const clean = initialFilter.trim().toLowerCase();
+    const matchedGenre = MASTER_GENRES.find(
+      (g) =>
+        g.value.toLowerCase().replace(/[^a-z0-9]+/g, "-") === clean ||
+        g.value.toLowerCase() === clean ||
+        g.keywords.some((kw) => kw.toLowerCase().replace(/[^a-z0-9]+/g, "-") === clean || kw.toLowerCase() === clean)
+    );
+    if (matchedGenre) {
+      setSelectedGenre(matchedGenre.value);
+      setSelectedState("All");
+      setSearchTerm("");
+      return;
+    }
+    const matchedState = CONTINENTAL_US_STATES.find(
+      (s) => s.code.toLowerCase() === clean || s.name.toLowerCase().replace(/\s+/g, "-") === clean
+    );
+    if (matchedState) {
+      setSelectedState(matchedState.code);
+      setSelectedGenre("All");
+      setSearchTerm("");
+      return;
+    }
+    setSearchTerm(initialFilter.replace(/-/g, " "));
+  }, [initialFilter]);
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");

@@ -1793,6 +1793,34 @@ const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     heading: "How We Verify 650+ Venues & 4,850+ Bands Without Stale Scraping",
     subhead: "Live moderation queue, dated audit entries, and community bounce reports resolved within 24 hours."
   },
+  "/verification-log": {
+    title: "Directory Verification Log & Freshness Audits | GigLizard",
+    description: "Live moderation log and dated verification audits for 650+ music venues and 4,850+ active touring bands across the Lower 48.",
+    canonical: "https://www.giglizard.us/verification",
+    heading: "How We Verify 650+ Venues & 4,850+ Bands Without Stale Scraping",
+    subhead: "Live moderation queue, dated audit entries, and community bounce reports resolved within 24 hours."
+  },
+  "/login": {
+    title: "Sign In | GigLizard",
+    description: "Log in to your GigLizard band, venue, or sound engineer account.",
+    canonical: "https://www.giglizard.us/",
+    heading: "Sign In to GigLizard",
+    subhead: "Access your saved stage plots, tour itineraries, and booking tools."
+  },
+  "/signup": {
+    title: "Register Free Profile | GigLizard",
+    description: "Create a free GigLizard band, venue, or sound engineer account.",
+    canonical: "https://www.giglizard.us/",
+    heading: "Create Your Free GigLizard Account",
+    subhead: "Register your band, club, or audio engineer profile for free."
+  },
+  "/register": {
+    title: "Register Free Profile | GigLizard",
+    description: "Create a free GigLizard band, venue, or sound engineer account.",
+    canonical: "https://www.giglizard.us/",
+    heading: "Create Your Free GigLizard Account",
+    subhead: "Register your band, club, or audio engineer profile for free."
+  },
   "/venues": {
     title: "650+ Live Music Clubs & Verified Venue Booking Inboxes | GigLizard",
     description: "Search 650+ verified live music clubs across the Lower 48 with direct booking emails, stage specs, and house PA details.",
@@ -1878,10 +1906,10 @@ const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     subhead: "Believable, real-world road and studio guides written by touring musicians and veteran sound engineers."
   },
   "/blog": {
-    title: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
+    title: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
     description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
-    canonical: "https://www.giglizard.us/blog",
-    heading: "GigLizard Blog: Tour Advice, Road Wisdom & Venue Strategies",
+    canonical: "https://www.giglizard.us/articles",
+    heading: "Tour Advice, Studio Recording & Merch Strategy",
     subhead: "Actionable guides, booking tactics, and road wisdom for independent bands and venues across the Lower 48."
   },
   "/privacy": {
@@ -1942,7 +1970,7 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
         </ul>
         
         <p style="margin-top: 30px; font-size: 14px; color: #475569; background: #f8fafc; padding: 18px 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
-          Need production tools for your run? Create your <a href="/plot" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">free stage plot</a>, build a <a href="/rider" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tech rider</a>, plan your <a href="/tour" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tour route and gas budget</a>, or read our <a href="/tour-advice" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tour advice playbooks</a>.
+          Need production tools for your run? Create your <a href="/tools/stage-plot" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">free stage plot</a>, build a <a href="/rider" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tech rider</a>, plan your <a href="/tour" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tour route and gas budget</a>, or read our <a href="/articles" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">tour advice playbooks</a>.
         </p>`;
   }
   if (cleanPath === "/privacy" || cleanPath === "/privacy-policy") {
@@ -2153,8 +2181,8 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
           <li><strong>Age Restrictions:</strong> Clear &ldquo;21+ with ID&rdquo; or &ldquo;All Ages&rdquo; callouts.</li>
         </ul>
 
-        <h2 style="font-size: 20px; color: #0f172a; margin-top: 25px;">Contrast Guidelines for Dim Club Lighting</h2>
-        <p style="line-height: 1.7; color: #475569;">Adhere to strict WCAG AAA contrast ratios with bright text on dark surfaces (white, cadmium yellow, neon cyan on deep charcoal). Maintain 0.5-inch margins from edges to protect against staple guns and poster tape on venue walls.</p>
+        <h2 style="font-size: 20px; color: #0f172a; margin-top: 25px;">Contrast Guidelines &amp; Print Bleed Specs</h2>
+        <p style="line-height: 1.7; color: #475569;">Adhere to strict WCAG AAA contrast ratios with bright text on dark surfaces (white, cadmium yellow, neon cyan on deep charcoal). Extend edge-to-edge background artwork by a standard <strong>0.125&quot; (3 mm) full bleed</strong> past the 11x17 trim line (3375 x 5175 px at 300 DPI) and maintain 0.5-inch inner safety margins from edges to protect against guillotine trim variance, staple guns, and poster tape on venue walls.</p>
 
         <h2 style="font-size: 20px; color: #0f172a; margin-top: 25px;">Frequently Asked Questions</h2>
         <dl>
@@ -2190,7 +2218,7 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
       return `
         <nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
           <a href="/" style="color: #4f46e5; text-decoration: underline;">Home</a> &gt; 
-          <a href="/tour-advice" style="color: #4f46e5; text-decoration: underline;">Tour Advice</a> &gt; 
+          <a href="/articles" style="color: #4f46e5; text-decoration: underline;">Tour Advice</a> &gt; 
           <span style="color: #1e293b; font-weight: 600;">${article.title}</span>
         </nav>
         <article style="background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; line-height: 1.7; max-width: 900px;">
@@ -2244,7 +2272,7 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
           </aside>
 
           <p style="margin-top: 30px; font-size: 14px; color: #475569; background: #f1f5f9; padding: 18px 20px; border-radius: 8px;">
-            Ready to tour? Browse <a href="/venues" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">650+ verified venues</a>, generate your <a href="/plot" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">free stage plot</a>, build your <a href="/rider" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">soundboard tech rider</a>, or design <a href="/poster" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">concert gig flyers</a>.
+            Ready to tour? Browse <a href="/venues" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">650+ verified venues</a>, generate your <a href="/tools/stage-plot" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">free stage plot</a>, build your <a href="/rider" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">soundboard tech rider</a>, or design <a href="/tools/poster-designer" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">concert gig flyers</a>.
           </p>
         </article>`;
     }
@@ -2252,11 +2280,12 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
   return "";
 }
 
-async function renderHtmlForRoute(rawTemplate: string, reqPath: string): Promise<string> {
+async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery: Record<string, any> = {}): Promise<string> {
   const cleanPath = reqPath.split("?")[0].replace(/\/$/, "") || "/";
   
-  // 1. Check if this is a programmatic venue directory route, tour article route, or HeyCatch blog route
+  // 1. Check if this is a programmatic venue directory route, band filter route, tour article route, or HeyCatch blog route
   const prog = cleanPath.startsWith("/venues/") ? parseProgrammaticVenuePath(cleanPath) : null;
+  const isBandFilterRoute = cleanPath.startsWith("/bands/") && cleanPath.length > "/bands/".length;
   const articleSlug = cleanPath.startsWith("/articles/") ? cleanPath.replace(/^\/articles\//, "") : null;
   const article = articleSlug ? getArticleBySlug(articleSlug) : null;
 
@@ -2287,7 +2316,37 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string): Promise
         heading: prog.heading,
         subhead: prog.subhead
       }
+    : isBandFilterRoute
+    ? {
+        ...ROUTE_METADATA_MAP["/bands"],
+        canonical: "https://www.giglizard.us/bands"
+      }
     : (ROUTE_METADATA_MAP[cleanPath] || ROUTE_METADATA_MAP["/"]);
+
+  // Determine whether Googlebot/crawlers should receive noindex, follow on SSR response
+  const hasFilterQuery = Boolean(
+    reqQuery.city ||
+    reqQuery.genre ||
+    reqQuery.state ||
+    reqQuery.filter ||
+    reqQuery.q ||
+    reqQuery.search
+  );
+  const isThinOrUtilityRoute =
+    cleanPath === "/changelog" ||
+    cleanPath === "/verification" ||
+    cleanPath === "/verification-log" ||
+    cleanPath === "/admin" ||
+    cleanPath === "/login" ||
+    cleanPath === "/signup" ||
+    cleanPath === "/register" ||
+    cleanPath === "/blog" ||
+    cleanPath.startsWith("/stage-plot/");
+  const shouldNoindex =
+    Boolean(prog) ||
+    isBandFilterRoute ||
+    ((cleanPath === "/venues" || cleanPath === "/bands") && hasFilterQuery) ||
+    isThinOrUtilityRoute;
 
   let html = rawTemplate;
   // Ensure Google AdSense script is present between <head></head> tags on every rendered page
@@ -2296,6 +2355,11 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string): Promise
       "<head>",
       `<head>\n    <!-- Google AdSense -->\n    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-9512474787890878"\n     crossorigin="anonymous"></script>`
     );
+  }
+  if (shouldNoindex) {
+    html = html.replace(/<meta name="robots" content=".*?" \/>/s, '<meta name="robots" content="noindex, follow" />');
+    html = html.replace(/<meta name="googlebot" content=".*?" \/>/s, '<meta name="googlebot" content="noindex, follow" />');
+    html = html.replace(/<meta name="bingbot" content=".*?" \/>/s, '<meta name="bingbot" content="noindex, follow" />');
   }
   html = html.replace(/<title>.*?<\/title>/s, `<title>${meta.title}</title>`);
   html = html.replace(/<meta name="description" content=".*?" \/>/s, `<meta name="description" content="${meta.description}" />`);
@@ -2739,8 +2803,10 @@ async function isValidRoute(cleanPath: string): Promise<boolean> {
     return !!getArticleBySlug(slug);
   }
   if (cleanPath.startsWith("/venues/")) {
-    const venueSub = cleanPath.replace(/^\/venues\//, "");
-    return !!parseProgrammaticVenuePath(venueSub);
+    return !!parseProgrammaticVenuePath(cleanPath);
+  }
+  if (cleanPath.startsWith("/bands/")) {
+    return cleanPath.length > "/bands/".length;
   }
   if (cleanPath.startsWith("/stage-plot/")) {
     return true;
@@ -2829,7 +2895,7 @@ async function startServer() {
 
       try {
         const template = fs.readFileSync(path.resolve("index.html"), "utf-8");
-        const customHtml = await renderHtmlForRoute(template, req.path);
+        const customHtml = await renderHtmlForRoute(template, req.path, req.query as Record<string, any>);
         const transformedHtml = await vite.transformIndexHtml(req.originalUrl, customHtml);
         res.status(200).set({ "Content-Type": "text/html" }).end(transformedHtml);
       } catch (e) {
@@ -2851,7 +2917,7 @@ async function startServer() {
       const templatePath = path.join(distPath, "index.html");
       if (fs.existsSync(templatePath)) {
         const template = fs.readFileSync(templatePath, "utf-8");
-        const finalHtml = await renderHtmlForRoute(template, req.path);
+        const finalHtml = await renderHtmlForRoute(template, req.path, req.query as Record<string, any>);
         res.status(200).set({ "Content-Type": "text/html" }).end(finalHtml);
       } else {
         res.sendFile(templatePath);

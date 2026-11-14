@@ -128,8 +128,19 @@ export default function GigLizardApp() {
     return null;
   };
 
+  const getInitialBandFilterSlug = (): string | null => {
+    try {
+      const cleanPath = window.location.pathname.toLowerCase().replace(/\/$/, "");
+      if (cleanPath.startsWith("/bands/") && cleanPath.length > "/bands/".length) {
+        return decodeURIComponent(cleanPath.replace(/^\/bands\//, ""));
+      }
+    } catch (_) {}
+    return null;
+  };
+
   const [selectedArticleSlug, setSelectedArticleSlug] = useState<string | null>(getInitialArticleSlug);
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(getInitialBlogSlug);
+  const [bandFilterSlug, setBandFilterSlug] = useState<string | null>(getInitialBandFilterSlug);
 
   // HeyCatch blog article count (Guide: Hide "Blog" nav link when total is 0)
   const [hasBlogArticles, setHasBlogArticles] = useState<boolean>(false);
@@ -189,14 +200,15 @@ export default function GigLizardApp() {
       if (cleanPath === "/customers" || cleanPath === "/stories" || cleanPath === "/case-studies") return "customers";
       if (cleanPath === "/guide" || cleanPath.includes("touring-guide") || cleanPath.includes("tour-guide") || cleanPath.includes("playbook")) return "guide";
       if (cleanPath === "/venues" || cleanPath.startsWith("/venues/")) return "venues";
-      if (cleanPath === "/bands") return "bands";
+      if (cleanPath === "/bands" || cleanPath.startsWith("/bands/")) return "bands";
       if (cleanPath === "/tour") return "tour";
       if (cleanPath === "/plot" || cleanPath === "/stage-plot" || cleanPath === "/tools/stage-plot") return "plot";
       if (cleanPath === "/rider" || cleanPath === "/tech-rider") return "rider";
       if (cleanPath === "/poster" || cleanPath === "/poster-designer" || cleanPath === "/tools/poster-designer") return "poster";
       if (cleanPath === "/advisor" || cleanPath === "/help" || cleanPath === "/faq") return "advisor";
-      if (cleanPath === "/verification" || cleanPath === "/audit" || cleanPath === "/freshness") return "verification";
+      if (cleanPath === "/verification" || cleanPath === "/verification-log" || cleanPath === "/audit" || cleanPath === "/freshness") return "verification";
       if (cleanPath === "/articles" || cleanPath === "/tour-advice" || cleanPath.startsWith("/articles/")) return "articles";
+      if (cleanPath === "/blog" || cleanPath.startsWith("/blog/")) return "blog";
       if (cleanPath === "/privacy" || cleanPath === "/privacy-policy") return "privacy";
       if (cleanPath === "/contact" || cleanPath === "/contact-us") return "contact";
 
@@ -259,7 +271,13 @@ export default function GigLizardApp() {
 
   // 1. Initial state MUST default to null, never mock Dr Hadit data
   const [currentUser, setCurrentUser] = useState<any | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(() => {
+    try {
+      return Object.keys(localStorage).some(k => k.startsWith("sb-") && k.endsWith("-auth-token"));
+    } catch {
+      return false;
+    }
+  });
 
   // Admin Data Migration / Seed Tool State
   const [isSyncingSupabase, setIsSyncingSupabase] = useState(false);
@@ -504,11 +522,6 @@ export default function GigLizardApp() {
     }
   }, [activeTab]);
 
-  // Synchronize document title, meta tags, OpenGraph, and canonical link with active view
-  useEffect(() => {
-    updatePageSeo(activeTab);
-  }, [activeTab]);
-
   // Track whether navigation state change originated from a browser popstate event
   const isNavigatingViaPopstateRef = useRef<boolean>(false);
 
@@ -516,9 +529,9 @@ export default function GigLizardApp() {
     home: "/",
     venues: "/venues",
     bands: "/bands",
-    plot: "/plot",
+    plot: "/tools/stage-plot",
     rider: "/rider",
-    poster: "/poster",
+    poster: "/tools/poster-designer",
     tour: "/tour",
     pricing: "/pricing",
     compare: "/compare",
@@ -539,6 +552,9 @@ export default function GigLizardApp() {
   const setActiveTab = (tab: TabType, pushToHistory = true) => {
     if (tab !== "venues") {
       setProgrammaticVenueRoute(null);
+    }
+    if (tab !== "bands") {
+      setBandFilterSlug(null);
     }
     if (tab !== "articles") {
       setSelectedArticleSlug(null);
@@ -667,7 +683,7 @@ export default function GigLizardApp() {
       advisor: "https://www.giglizard.us/faq",
       verification: "https://www.giglizard.us/verification",
       articles: "https://www.giglizard.us/articles",
-      blog: "https://www.giglizard.us/blog",
+      blog: "https://www.giglizard.us/articles",
       privacy: "https://www.giglizard.us/privacy",
       contact: "https://www.giglizard.us/contact",
       admin: "https://www.giglizard.us/admin"
@@ -694,17 +710,69 @@ export default function GigLizardApp() {
       if (selectedBlogSlug) {
         canonicalHref = `https://www.giglizard.us/blog/${selectedBlogSlug}`;
       } else {
-        canonicalHref = "https://www.giglizard.us/blog";
+        canonicalHref = "https://www.giglizard.us/articles";
       }
     } else if (activeTab === "venues" && programmaticVenueRoute) {
       pageTitle = programmaticVenueRoute.title;
       pageDesc = programmaticVenueRoute.description;
       canonicalHref = `https://www.giglizard.us${programmaticVenueRoute.canonicalPath}`;
+    } else if (activeTab === "bands" && bandFilterSlug) {
+      canonicalHref = "https://www.giglizard.us/bands";
     }
+
+    // Determine whether Googlebot/crawlers should noindex this view
+    let hasFilterQuery = false;
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      hasFilterQuery = Boolean(
+        searchParams.get("city") ||
+        searchParams.get("genre") ||
+        searchParams.get("state") ||
+        searchParams.get("filter") ||
+        searchParams.get("q") ||
+        searchParams.get("search")
+      );
+    } catch (_) {}
+
+    const isProgrammaticRoute =
+      (activeTab === "venues" && (Boolean(programmaticVenueRoute) || hasFilterQuery)) ||
+      (activeTab === "bands" && (Boolean(bandFilterSlug) || hasFilterQuery)) ||
+      Boolean(publicStagePlotBandId);
+
+    const isThinUtilityRoute =
+      activeTab === "changelog" ||
+      activeTab === "verification" ||
+      activeTab === "admin" ||
+      (activeTab === "blog" && !selectedBlogSlug);
+
+    const isAuthModalOpen =
+      showUserLoginModal ||
+      showArtistRegistrationModal ||
+      showResetPasswordModal;
+
+    const shouldNoindex = isProgrammaticRoute || isThinUtilityRoute || isAuthModalOpen;
+    const robotsDirective = shouldNoindex
+      ? "noindex, follow"
+      : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
 
     document.title = pageTitle;
 
     try {
+      // 0. Sync robots directives dynamically
+      const setMetaTag = (attr: "name" | "property", key: string, val: string) => {
+        let el = document.querySelector(`meta[${attr}="${key}"]`);
+        if (!el) {
+          el = document.createElement("meta");
+          el.setAttribute(attr, key);
+          document.head.appendChild(el);
+        }
+        el.setAttribute("content", val);
+      };
+
+      setMetaTag("name", "robots", robotsDirective);
+      setMetaTag("name", "googlebot", robotsDirective);
+      setMetaTag("name", "bingbot", robotsDirective);
+
       // 1. Update or create canonical
       let linkCanonical = document.querySelector('link[rel="canonical"]');
       if (!linkCanonical) {
@@ -715,33 +783,30 @@ export default function GigLizardApp() {
       linkCanonical.setAttribute("href", canonicalHref);
 
       // 2. Update meta description
-      let metaDesc = document.querySelector('meta[name="description"]');
-      if (metaDesc) metaDesc.setAttribute("content", pageDesc);
+      setMetaTag("name", "description", pageDesc);
 
       // 3. Update Open Graph tags
-      let ogTitle = document.querySelector('meta[property="og:title"]');
-      if (ogTitle) ogTitle.setAttribute("content", pageTitle);
-
-      let ogDesc = document.querySelector('meta[property="og:description"]');
-      if (ogDesc) ogDesc.setAttribute("content", pageDesc);
-
-      let ogUrl = document.querySelector('meta[property="og:url"]');
-      if (ogUrl) ogUrl.setAttribute("content", canonicalHref);
-
-      let ogImage = document.querySelector('meta[property="og:image"]');
-      if (ogImage) ogImage.setAttribute("content", "https://www.giglizard.us/giglizard_logo.png");
+      setMetaTag("property", "og:title", pageTitle);
+      setMetaTag("property", "og:description", pageDesc);
+      setMetaTag("property", "og:url", canonicalHref);
+      setMetaTag("property", "og:image", "https://www.giglizard.us/giglizard_logo.png");
 
       // 4. Update Twitter Card tags
-      let twTitle = document.querySelector('meta[name="twitter:title"]');
-      if (twTitle) twTitle.setAttribute("content", pageTitle);
-
-      let twDesc = document.querySelector('meta[name="twitter:description"]');
-      if (twDesc) twDesc.setAttribute("content", pageDesc);
-
-      let twImage = document.querySelector('meta[name="twitter:image"]');
-      if (twImage) twImage.setAttribute("content", "https://www.giglizard.us/giglizard_logo.png");
+      setMetaTag("name", "twitter:title", pageTitle);
+      setMetaTag("name", "twitter:description", pageDesc);
+      setMetaTag("name", "twitter:image", "https://www.giglizard.us/giglizard_logo.png");
     } catch (_) {}
-  }, [activeTab, programmaticVenueRoute, selectedArticleSlug, selectedBlogSlug]);
+  }, [
+    activeTab,
+    programmaticVenueRoute,
+    bandFilterSlug,
+    selectedArticleSlug,
+    selectedBlogSlug,
+    publicStagePlotBandId,
+    showUserLoginModal,
+    showArtistRegistrationModal,
+    showResetPasswordModal
+  ]);
 
   // Track page visit on mount and tab switch
   useEffect(() => {
@@ -794,7 +859,7 @@ export default function GigLizardApp() {
       setShowSecurityModal(true);
       return true;
     }
-    if (clean === "verification" || clean === "audit" || clean === "freshness") {
+    if (clean === "verification" || clean === "verification-log" || clean === "audit" || clean === "freshness") {
       setActiveTabState("verification");
       return true;
     }
@@ -840,8 +905,24 @@ export default function GigLizardApp() {
       setActiveTabState("tour");
       return true;
     }
-    if (clean === "bands") {
+    if (clean.startsWith("bands/")) {
+      const filter = clean.replace(/^bands\//, "");
+      setBandFilterSlug(filter || null);
       setActiveTabState("bands");
+      return true;
+    }
+    if (clean === "bands") {
+      setBandFilterSlug(null);
+      setActiveTabState("bands");
+      return true;
+    }
+    if (clean === "login") {
+      setLoginModalMode("login");
+      setShowUserLoginModal(true);
+      return true;
+    }
+    if (clean === "signup" || clean === "register") {
+      setShowArtistRegistrationModal(true);
       return true;
     }
     if (clean === "changelog" || clean === "updates") {
@@ -1203,6 +1284,25 @@ export default function GigLizardApp() {
         }
         if (currentPath === "/tour") {
           setActiveTabState("tour");
+          return;
+        }
+        if (currentPath.startsWith("/bands/")) {
+          const filter = currentPath.replace(/^\/bands\//, "");
+          setBandFilterSlug(filter || null);
+          setActiveTabState("bands");
+          return;
+        }
+        if (currentPath === "/bands") {
+          setBandFilterSlug(null);
+          setActiveTabState("bands");
+          return;
+        }
+        if (currentPath === "/verification" || currentPath === "/verification-log") {
+          setActiveTabState("verification");
+          return;
+        }
+        if (currentPath === "/changelog") {
+          setActiveTabState("changelog");
           return;
         }
 
@@ -1734,7 +1834,7 @@ export default function GigLizardApp() {
                     </div>
 
                     <a
-                      href="/plot"
+                      href="/tools/stage-plot"
                       onClick={(e) => { e.preventDefault(); setActiveTab("plot"); setIsToolsDropdownOpen(false); }}
                       id="dropdown-link-plot"
                       className={`flex items-start gap-2.5 p-2 rounded-xl text-xs transition-colors ${
@@ -1772,7 +1872,7 @@ export default function GigLizardApp() {
                     </a>
 
                     <a
-                      href="/poster"
+                      href="/tools/poster-designer"
                       onClick={(e) => { e.preventDefault(); setActiveTab("poster"); setIsToolsDropdownOpen(false); }}
                       id="dropdown-link-poster"
                       className={`flex items-start gap-2.5 p-2 rounded-xl text-xs transition-colors ${
@@ -1983,7 +2083,7 @@ export default function GigLizardApp() {
                 <span>Bands</span>
               </a>
               <a
-                href="/plot"
+                href="/tools/stage-plot"
                 onClick={(e) => { e.preventDefault(); setActiveTab("plot"); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold transition-all ${
                   activeTab === "plot" ? "bg-indigo-50 text-indigo-900 border border-indigo-200 shadow-xs" : "bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200/60"
@@ -2003,7 +2103,7 @@ export default function GigLizardApp() {
                 <span>Tech Rider</span>
               </a>
               <a
-                href="/poster"
+                href="/tools/poster-designer"
                 onClick={(e) => { e.preventDefault(); setActiveTab("poster"); setIsMobileMenuOpen(false); }}
                 className={`flex items-center gap-2 p-2.5 rounded-xl text-xs font-bold transition-all ${
                   activeTab === "poster" ? "bg-purple-50 text-purple-900 border border-purple-200 shadow-xs" : "bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200/60"
@@ -2409,6 +2509,7 @@ export default function GigLizardApp() {
               currentAccount={currentAccount}
               currentUser={currentUser}
               isAuthLoading={isAuthLoading}
+              initialFilter={bandFilterSlug}
               onUpdateAccount={handleUpdateAccount}
               onTriggerEditAccount={() => setShowEditAccountModal(true)}
               onTriggerUpgrade={() => {

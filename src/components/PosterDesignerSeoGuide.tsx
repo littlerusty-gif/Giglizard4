@@ -292,6 +292,35 @@ export default function PosterDesignerSeoGuide() {
         </div>
       </div>
 
+      {/* Print Bleed Specs & Prepress Guidelines */}
+      <div className="space-y-4">
+        <div className="border-b border-slate-200 pb-3">
+          <h3 className="text-xl font-black text-slate-900 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-indigo-600" />
+            <span>Print Bleed Specs, Trim Edges &amp; Prepress Export Checklist</span>
+          </h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Avoid white hairline borders and clipped headlines at local print shops by configuring exact bleed and safe margins before sending files to press.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">Standard 0.125&quot; (1/8 Inch) Full Print Bleed</h4>
+            <p className="text-slate-600 leading-relaxed">
+              When printing edge-to-edge backgrounds on <strong>11&times;17 Tabloid</strong> or <strong>12&times;18</strong> poster stock, commercial guillotines cut slightly inside the sheet. Always extend dark backgrounds, textures, and border artwork <strong>0.125 inches (3 mm)</strong> past the final trim line—making an 11&times;17 poster 11.25&times;17.25 inches (3375 &times; 5175 px at 300 DPI) before trimming.
+            </p>
+          </div>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+            <h4 className="font-extrabold text-slate-900 text-sm">Safety Margins &amp; 300 DPI Raster Sharpness</h4>
+            <p className="text-slate-600 leading-relaxed">
+              While background artwork extends into the 0.125&quot; bleed zone, keep all band names, show dates, venue addresses, and ticket QR codes at least <strong>0.25&quot; to 0.5&quot; inside the trim edge</strong>. Export at a minimum of <strong>300 DPI</strong> so halftone dots, grunge textures, and small supporting band fonts stay razor-sharp on uncoated matte cardstock or coated gloss flyers.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Frequently Asked Questions Section (FAQPage Schema Parity) */}
       <div className="space-y-4">
         <div className="border-b border-slate-200 pb-3">

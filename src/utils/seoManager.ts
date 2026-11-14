@@ -10,7 +10,11 @@ export interface SeoMetadata {
   keywords: string;
   canonicalUrl: string;
   ogType?: string;
+  robots?: string;
 }
+
+export const DEFAULT_INDEX_ROBOTS = "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1";
+export const NOINDEX_FOLLOW_ROBOTS = "noindex, follow";
 
 export const SEO_CONFIG: Record<string, SeoMetadata> = {
   home: {
@@ -89,7 +93,8 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     title: "Changelog & Product Updates | GigLizard",
     description: "Track live releases, feature additions, venue database expansions, and stage plotting improvements on the GigLizard platform.",
     keywords: "giglizard changelog, band tour software updates, live sound stage plot updates",
-    canonicalUrl: "https://www.giglizard.us/changelog"
+    canonicalUrl: "https://www.giglizard.us/changelog",
+    robots: NOINDEX_FOLLOW_ROBOTS
   },
   customers: {
     title: "Band Stories & Touring Case Studies | GigLizard",
@@ -101,7 +106,8 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     title: "Live Booking Contact Verification & Freshness Log | GigLizard",
     description: "Real-time audit log tracking human verification of venue emails, sound specs, and band contact information across all 50 states.",
     keywords: "venue email verification, live booking audit log, accurate music venue directory",
-    canonicalUrl: "https://www.giglizard.us/verification"
+    canonicalUrl: "https://www.giglizard.us/verification",
+    robots: NOINDEX_FOLLOW_ROBOTS
   },
   advisor: {
     title: "Touring FAQ & Booking Support | GigLizard",
@@ -116,10 +122,10 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     canonicalUrl: "https://www.giglizard.us/articles"
   },
   blog: {
-    title: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
+    title: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
     description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
     keywords: "music venue blog, diy band tour advice, live music booking tips, stage plot advice",
-    canonicalUrl: "https://www.giglizard.us/blog"
+    canonicalUrl: "https://www.giglizard.us/articles"
   },
   privacy: {
     title: "GigLizard Privacy Policy - Data Protection & Cookie Disclosures",
@@ -132,17 +138,25 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     description: "Contact Little Rusty and the GigLizard team for venue moderation reports, artist support, or direct questions. Direct response within 4 hours.",
     keywords: "contact giglizard, little rusty portland, music venue support",
     canonicalUrl: "https://www.giglizard.us/contact"
+  },
+  admin: {
+    title: "Owner Management Dashboard | GigLizard",
+    description: "Internal management workspace for GigLizard directory moderation.",
+    keywords: "giglizard admin",
+    canonicalUrl: "https://www.giglizard.us/admin",
+    robots: NOINDEX_FOLLOW_ROBOTS
   }
 };
 
 /**
- * Updates DOM title, meta description, meta keywords, canonical link,
+ * Updates DOM title, meta description, meta keywords, robots directives, canonical link,
  * and OpenGraph/Twitter card tags for the current active view.
  */
 export function updatePageSeo(tabKey: string, customMeta?: Partial<SeoMetadata>) {
   if (typeof document === "undefined") return;
 
   const config = { ...(SEO_CONFIG[tabKey] || SEO_CONFIG.home), ...customMeta };
+  const robotsValue = config.robots || DEFAULT_INDEX_ROBOTS;
 
   // 1. Page Title
   document.title = config.title;
@@ -158,19 +172,24 @@ export function updatePageSeo(tabKey: string, customMeta?: Partial<SeoMetadata>)
     elem.setAttribute("content", content);
   };
 
-  // 3. Meta Description & Keywords
+  // 3. Meta Description, Keywords & Robots Directives
   setMetaTag("name", "description", config.description);
   setMetaTag("name", "keywords", config.keywords);
+  setMetaTag("name", "robots", robotsValue);
+  setMetaTag("name", "googlebot", robotsValue);
+  setMetaTag("name", "bingbot", robotsValue);
 
   // 4. OpenGraph Tags
   setMetaTag("property", "og:title", config.title);
   setMetaTag("property", "og:description", config.description);
   setMetaTag("property", "og:url", config.canonicalUrl);
   setMetaTag("property", "og:type", config.ogType || "website");
+  setMetaTag("property", "og:image", "https://www.giglizard.us/giglizard_logo.png");
 
   // 5. Twitter Card Tags
   setMetaTag("name", "twitter:title", config.title);
   setMetaTag("name", "twitter:description", config.description);
+  setMetaTag("name", "twitter:image", "https://www.giglizard.us/giglizard_logo.png");
 
   // 6. Canonical Link
   let canonicalElem = document.querySelector('link[rel="canonical"]');

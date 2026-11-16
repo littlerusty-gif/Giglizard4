@@ -10,7 +10,15 @@ import { createClient } from "@supabase/supabase-js";
 import { INITIAL_AVAILABLE_BANDS, sanitizeBandPhoneNumber } from "./src/data/availableBands";
 import { MUSIC_VENUES } from "./src/data/venues";
 import { resolveBandAgency } from "./src/utils/bookingAgencies";
-import { parseProgrammaticVenuePath } from "./src/utils/venueSeoRoutes";
+import {
+  parseProgrammaticVenuePath,
+  buildCanonicalVenuePath,
+  buildVenueProfileSeoRoute,
+  findVenueByIdentifierOrSlug,
+  slugifySeoSegment,
+  CANONICAL_DOMAIN
+} from "./src/utils/venueSeoRoutes";
+import type { Venue } from "./src/types";
 import { generateSitemapXml, generateDynamicSupabaseSitemap } from "./src/utils/sitemapGenerator";
 import { TOUR_ARTICLES, getArticleBySlug, getRelatedArticles } from "./src/data/tourArticles";
 import { 
@@ -63,20 +71,22 @@ const MAX_REQUESTS_PER_WINDOW = 80;
 
 app.use(express.json({ limit: "1mb" }));
 
+function isLocalOrPreviewRequest(req: express.Request): boolean {
+  const rawHost = ((req.headers["x-forwarded-host"] as string) || req.headers.host || "").toLowerCase().split(":")[0];
+  const isLocalhost =
+    rawHost === "localhost" ||
+    rawHost === "127.0.0.1" ||
+    rawHost === "0.0.0.0" ||
+    rawHost.endsWith(".local") ||
+    rawHost === "";
+  const isInternalPreview = rawHost.endsWith(".run.app") || rawHost.includes("google") || rawHost.includes("aistudio");
+  return isLocalhost || isInternalPreview;
+}
+
 // 0. Production Canonical Domain (https://www.giglizard.us) 301 Redirect Middleware
 app.use((req, res, next) => {
   const rawHost = (req.headers["x-forwarded-host"] as string || req.headers.host || "").toLowerCase().split(":")[0];
   const proto = (req.headers["x-forwarded-proto"] as string || req.protocol || "http").toLowerCase();
-
-  const isLocalhost = 
-    rawHost === "localhost" || 
-    rawHost === "127.0.0.1" || 
-    rawHost === "0.0.0.0" || 
-    rawHost.endsWith(".local") ||
-    rawHost === "";
-
-  // Cloud Run / AI Studio preview environment domains (ais-dev-...run.app, ais-pre-...run.app)
-  const isInternalPreview = rawHost.endsWith(".run.app") || rawHost.includes("google") || rawHost.includes("aistudio");
 
   // If request hits apex domain giglizard.us (non-www), 301 redirect to https://www.giglizard.us
   if (rawHost === "giglizard.us") {
@@ -85,10 +95,139 @@ app.use((req, res, next) => {
 
   // In production outside internal preview/localhost:
   // Strictly enforce https://www.giglizard.us (redirect insecure HTTP and any non-canonical domain)
-  if (!isLocalhost && !isInternalPreview) {
+  if (!isLocalOrPreviewRequest(req)) {
     if (rawHost !== "www.giglizard.us" || proto !== "https") {
       return res.redirect(301, `https://www.giglizard.us${req.originalUrl || req.url}`);
     }
+  }
+
+  next();
+});
+
+// Helper: Resolve any venue by UUID, legacy slug, or city-state/slug across static data, memory, and Supabase
+async function resolveVenueOnServer(query: {
+  idOrSlug?: string;
+  cityStateSlug?: string;
+  venueSlug?: string;
+}): Promise<Venue | null> {
+  const allMemoryVenues = [...serverRegisteredVenues, ...MUSIC_VENUES];
+  const memoryHit = findVenueByIdentifierOrSlug(query, allMemoryVenues);
+  if (memoryHit) return memoryHit;
+
+  try {
+    if (query.idOrSlug) {
+      const { data, error } = await supabaseAdmin
+        .from("venues")
+        .select("id, name, city, state, address, capacity, booking_email, phone, website, description, genres_accepted")
+        .eq("id", query.idOrSlug)
+        .maybeSingle();
+
+      if (!error && data && data.name) {
+        return {
+          id: String(data.id),
+          name: data.name,
+          city: data.city || "",
+          state: data.state || "",
+          country: "US",
+          address: data.address || `${data.city || ""}, ${data.state || ""}`.trim(),
+          capacity: Number(data.capacity) || 200,
+          genres: Array.isArray(data.genres_accepted)
+            ? data.genres_accepted
+            : typeof data.genres_accepted === "string"
+              ? data.genres_accepted.split(",").map((g: string) => g.trim()).filter(Boolean)
+              : ["Live Music"],
+          contactEmail: data.booking_email || "booking@giglizard.us",
+          contactPhone: data.phone || "",
+          hasPA: true,
+          hasLighting: true,
+          description: data.description || `Live music venue in ${data.city || ""}, ${data.state || ""}.`,
+          website: data.website || ""
+        };
+      }
+    } else if (query.cityStateSlug && query.venueSlug) {
+      const match = query.cityStateSlug.match(/^(.+)-([a-z]{2})$/i);
+      if (match) {
+        const stateCode = match[2].toUpperCase();
+        const citySearch = match[1].replace(/-/g, " ");
+        const { data, error } = await supabaseAdmin
+          .from("venues")
+          .select("id, name, city, state, address, capacity, booking_email, phone, website, description, genres_accepted")
+          .ilike("state", stateCode)
+          .ilike("city", `%${citySearch}%`);
+
+        if (!error && Array.isArray(data) && data.length > 0) {
+          const mapped: Venue[] = data.map((row: any) => ({
+            id: String(row.id),
+            name: row.name,
+            city: row.city || "",
+            state: row.state || stateCode,
+            country: "US",
+            address: row.address || `${row.city || ""}, ${row.state || stateCode}`,
+            capacity: Number(row.capacity) || 200,
+            genres: Array.isArray(row.genres_accepted)
+              ? row.genres_accepted
+              : typeof row.genres_accepted === "string"
+                ? row.genres_accepted.split(",").map((g: string) => g.trim()).filter(Boolean)
+                : ["Live Music"],
+            contactEmail: row.booking_email || "booking@giglizard.us",
+            contactPhone: row.phone || "",
+            hasPA: true,
+            hasLighting: true,
+            description: row.description || `Live music venue in ${row.city || ""}, ${row.state || stateCode}.`,
+            website: row.website || ""
+          }));
+          return findVenueByIdentifierOrSlug(query, mapped);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Server] Venue lookup fallback notice:", err);
+  }
+
+  return null;
+}
+
+// 0B. Server-Side 301 Permanent Redirects for Legacy /venues/venue/* & Non-Canonical Venue URLs
+app.use(async (req, res, next) => {
+  if (req.method !== "GET" && req.method !== "HEAD") return next();
+  if (!req.path.toLowerCase().startsWith("/venues/")) return next();
+
+  const trimmed = req.path.replace(/^\/+|\/+$/g, "");
+  const parts = trimmed.split("/");
+
+  // 1. Legacy UUID & secondary slug routes: /venues/venue/:venueId -> 301 to /venues/[city-state]/[slug]
+  if (parts.length === 3 && parts[1].toLowerCase() === "venue") {
+    const venueId = parts[2];
+    const matchedVenue = await resolveVenueOnServer({ idOrSlug: venueId });
+    if (!matchedVenue) {
+      return res.status(404).set({ "Content-Type": "text/html" }).send(render404Page());
+    }
+    const canonicalPath = buildCanonicalVenuePath(matchedVenue);
+    const target = isLocalOrPreviewRequest(req) ? canonicalPath : `${CANONICAL_DOMAIN}${canonicalPath}`;
+    return res.redirect(301, target);
+  }
+
+  // 2. Canonical /venues/:cityState/:venueSlug — enforce lowercase, trimmed hyphens, and no trailing slash
+  if (parts.length === 3 && /^(.+)-([a-z]{2})$/i.test(parts[1])) {
+    const matchedVenue = await resolveVenueOnServer({
+      cityStateSlug: parts[1],
+      venueSlug: parts[2]
+    });
+    const canonicalPath = matchedVenue
+      ? buildCanonicalVenuePath(matchedVenue)
+      : `/venues/${slugifySeoSegment(parts[1])}/${slugifySeoSegment(parts[2])}`;
+
+    if (req.path !== canonicalPath) {
+      const target = isLocalOrPreviewRequest(req) ? canonicalPath : `${CANONICAL_DOMAIN}${canonicalPath}`;
+      return res.redirect(301, target);
+    }
+  }
+
+  // 3. Strip trailing slash on any /venues/:hub/ route
+  if (req.path.length > 1 && req.path.endsWith("/")) {
+    const cleanTarget = req.path.replace(/\/+$/, "").toLowerCase();
+    const target = isLocalOrPreviewRequest(req) ? cleanTarget : `${CANONICAL_DOMAIN}${cleanTarget}`;
+    return res.redirect(301, target);
   }
 
   next();
@@ -1966,7 +2105,7 @@ function getRouteNoscriptSnippet(cleanPath: string): string {
         <h2 style="font-size: 20px; color: #0f172a; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-top: 30px; margin-bottom: 15px;">Verified Club Inboxes &amp; Capacity Specs (${MUSIC_VENUES.length}+ Stages)</h2>
         <p style="font-size: 15px; color: #475569; margin-bottom: 15px;">Every venue listing includes verified booking talent buyer contact info, room capacity, and house sound specs with zero paywall.</p>
         <ul style="padding-left: 20px; line-height: 1.6;">
-          ${MUSIC_VENUES.slice(0, 20).map(v => `<li><strong>${v.name}</strong> (Capacity: ${v.capacity}) — ${v.address} | Genres: ${v.genres.join(", ")} | Booking Email: ${v.contactEmail}</li>`).join("\n          ")}
+          ${MUSIC_VENUES.slice(0, 20).map(v => `<li><strong><a href="${buildCanonicalVenuePath(v)}" style="color: #4f46e5; text-decoration: underline;">${v.name}</a></strong> (Capacity: ${v.capacity}) — ${v.address} | Genres: ${v.genres.join(", ")} | Booking Email: ${v.contactEmail}</li>`).join("\n          ")}
         </ul>
         
         <p style="margin-top: 30px; font-size: 14px; color: #475569; background: #f8fafc; padding: 18px 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
@@ -2284,7 +2423,16 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
   const cleanPath = reqPath.split("?")[0].replace(/\/$/, "") || "/";
   
   // 1. Check if this is a programmatic venue directory route, band filter route, tour article route, or HeyCatch blog route
-  const prog = cleanPath.startsWith("/venues/") ? parseProgrammaticVenuePath(cleanPath) : null;
+  let prog = cleanPath.startsWith("/venues/") ? parseProgrammaticVenuePath(cleanPath, [...serverRegisteredVenues, ...MUSIC_VENUES]) : null;
+  if (prog && prog.type === "venue-profile" && !prog.venue && prog.venueSlug && prog.city && prog.stateCode) {
+    const dbVenue = await resolveVenueOnServer({
+      cityStateSlug: `${slugifySeoSegment(prog.city)}-${prog.stateCode.toLowerCase()}`,
+      venueSlug: prog.venueSlug
+    });
+    if (dbVenue) {
+      prog = buildVenueProfileSeoRoute(dbVenue);
+    }
+  }
   const isBandFilterRoute = cleanPath.startsWith("/bands/") && cleanPath.length > "/bands/".length;
   const articleSlug = cleanPath.startsWith("/articles/") ? cleanPath.replace(/^\/articles\//, "") : null;
   const article = articleSlug ? getArticleBySlug(articleSlug) : null;
@@ -2324,6 +2472,8 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
     : (ROUTE_METADATA_MAP[cleanPath] || ROUTE_METADATA_MAP["/"]);
 
   // Determine whether Googlebot/crawlers should receive noindex, follow on SSR response
+  // Canonical single venue profile pages (/venues/[city-state]/[slug]) are indexable so GSC indexes the single canonical URL;
+  // programmatic city/genre filter hubs and query-filter views receive noindex, follow.
   const hasFilterQuery = Boolean(
     reqQuery.city ||
     reqQuery.genre ||
@@ -2342,8 +2492,9 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
     cleanPath === "/register" ||
     cleanPath === "/blog" ||
     cleanPath.startsWith("/stage-plot/");
+  const isProgrammaticFilterHub = Boolean(prog && prog.type !== "venue-profile");
   const shouldNoindex =
-    Boolean(prog) ||
+    isProgrammaticFilterHub ||
     isBandFilterRoute ||
     ((cleanPath === "/venues" || cleanPath === "/bands") && hasFilterQuery) ||
     isThinOrUtilityRoute;
@@ -2377,9 +2528,10 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
     html = html.replace(/<p>Find music venues for free.*?<\/p>/s, `<p>${meta.subhead}</p>`);
   }
 
-  // 2. For programmatic venue landing pages, inject dynamic ItemList structured data & replace noscript main
+  // 2. For programmatic venue landing pages & canonical venue profiles, inject structured data & SSR main
   if (prog) {
-    const matchingVenues = MUSIC_VENUES.filter(v => {
+    const allCurrentVenues = [...serverRegisteredVenues, ...MUSIC_VENUES];
+    const matchingVenues = allCurrentVenues.filter(v => {
       let match = true;
       if (prog.city) {
         const cityLower = prog.city.toLowerCase();
@@ -2400,36 +2552,105 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
       return match;
     });
 
-    const displayVenues = matchingVenues.length > 0 ? matchingVenues : MUSIC_VENUES.slice(0, 10);
+    if (prog.type === "venue-profile" && prog.venue) {
+      const targetVenue = prog.venue;
+      const cityStateSlug = `${slugifySeoSegment(prog.city || targetVenue.city || "")}-${(prog.stateCode || targetVenue.state || "us").toLowerCase()}`;
+      const canonicalUrl = `https://www.giglizard.us${prog.canonicalPath}`;
+      const sameCityPeers = matchingVenues.filter(v => v.id !== targetVenue.id).slice(0, 12);
 
-    const schemaItemList = {
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": prog.heading,
-      "description": prog.description,
-      "url": `https://www.giglizard.us${prog.canonicalPath}`,
-      "numberOfItems": displayVenues.length,
-      "itemListElement": displayVenues.slice(0, 25).map((v, idx) => ({
-        "@type": "ListItem",
-        "position": idx + 1,
-        "item": {
-          "@type": "MusicVenue",
-          "name": v.name,
-          "address": v.address,
-          "maximumAttendeeCapacity": v.capacity,
-          "telephone": (v.contactPhone && !v.contactPhone.includes("555")) ? v.contactPhone : undefined,
-          "url": v.website ? (v.website.startsWith("http") ? v.website : `https://${v.website}`) : undefined,
-          "description": v.description
-        }
-      }))
-    };
+      const musicVenueSchema = {
+        "@context": "https://schema.org",
+        "@type": "MusicVenue",
+        "name": targetVenue.name,
+        "url": canonicalUrl,
+        "address": {
+          "@type": "PostalAddress",
+          "streetAddress": targetVenue.address,
+          "addressLocality": targetVenue.city || prog.city,
+          "addressRegion": targetVenue.state || prog.stateCode,
+          "addressCountry": targetVenue.country || "US"
+        },
+        "maximumAttendeeCapacity": targetVenue.capacity || undefined,
+        "telephone": (targetVenue.contactPhone && !targetVenue.contactPhone.includes("555")) ? targetVenue.contactPhone : undefined,
+        "sameAs": targetVenue.website ? (targetVenue.website.startsWith("http") ? targetVenue.website : `https://${targetVenue.website}`) : undefined,
+        "description": targetVenue.description
+      };
 
-    html = html.replace(
-      "</head>",
-      `    <script type="application/ld+json">\n    ${JSON.stringify(schemaItemList, null, 2)}\n    </script>\n  </head>`
-    );
+      html = html.replace(
+        "</head>",
+        `    <script type="application/ld+json">\n    ${JSON.stringify(musicVenueSchema, null, 2)}\n    </script>\n  </head>`
+      );
 
-    const progMain = `<main style="padding: 30px 20px; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 900px; margin: 0 auto; color: #1e293b;">
+      const venueProfileMain = `<main style="padding: 30px 20px; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 900px; margin: 0 auto; color: #1e293b;">
+        <nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
+          <a href="/" style="color: #4f46e5; text-decoration: underline;">Home</a> &gt; 
+          <a href="/venues" style="color: #4f46e5; text-decoration: underline;">Venues</a> &gt; 
+          <a href="/venues/${cityStateSlug}" style="color: #4f46e5; text-decoration: underline;">${prog.city}, ${prog.stateCode}</a> &gt; 
+          <span style="color: #1e293b; font-weight: 600;">${targetVenue.name}</span>
+        </nav>
+        <h1 style="font-size: 28px; line-height: 1.3; color: #0f172a; margin-bottom: 12px;">${prog.heading}</h1>
+        <p style="font-size: 16px; color: #334155; line-height: 1.6; margin-bottom: 20px;">${targetVenue.description || prog.description}</p>
+        <div style="margin-top: 20px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="font-size: 20px; color: #0f172a; margin-top: 0;">Stage Specs &amp; Booking Contact</h2>
+          <ul style="padding-left: 20px; line-height: 1.8;">
+            <li><strong>Address:</strong> ${targetVenue.address}</li>
+            <li><strong>Capacity:</strong> ${targetVenue.capacity || 200} guests</li>
+            <li><strong>Genres:</strong> ${(targetVenue.genres || []).join(", ") || "Live Music"}</li>
+            <li><strong>House PA:</strong> ${targetVenue.hasPA ? "Installed On-Site" : "Band Provides PA"}</li>
+            <li><strong>Stage Lighting:</strong> ${targetVenue.hasLighting ? "Full Stage Lighting" : "Basic Lighting"}</li>
+            <li><strong>Booking Contact:</strong> ${targetVenue.contactEmail}</li>
+          </ul>
+        </div>
+        ${sameCityPeers.length > 0 ? `
+        <div style="margin-top: 25px; padding: 20px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px;">
+          <h2 style="font-size: 18px; color: #0f172a; margin-top: 0;">More Live Music Venues in ${prog.city}, ${prog.stateCode}</h2>
+          <ul style="padding-left: 20px; line-height: 1.7;">
+            ${sameCityPeers.map(v => `<li><a href="${buildCanonicalVenuePath(v)}" style="color: #4f46e5; text-decoration: underline; font-weight: 600;">${v.name}</a> (${v.capacity} cap) — ${v.address}</li>`).join("\n            ")}
+          </ul>
+        </div>` : ""}
+        <footer style="margin-top: 40px; padding: 25px 20px; background: #0f172a; color: #94a3b8; font-size: 13px; text-align: center; border-radius: 8px;">
+          <p>
+            <a href="https://www.giglizard.us/about" style="color: #cbd5e1; text-decoration: underline; margin-right: 15px;">About GigLizard</a> · 
+            <a href="https://www.giglizard.us/contact" style="color: #cbd5e1; text-decoration: underline; margin-right: 15px;">Contact</a> · 
+            <a href="mailto:hello@giglizard.us" style="color: #cbd5e1; text-decoration: underline;">Email</a>
+          </p>
+          <p style="margin-top: 10px; font-size: 11px; color: #64748b;">
+            © 2026 GigLizard • Built in Portland, Oregon by Little Rusty for independent touring musicians and venues across the Lower 48.
+          </p>
+        </footer>
+      </main>`;
+      html = html.replace(/<main style="padding: 30px.*?<\/main>/s, venueProfileMain);
+    } else {
+      const displayVenues = matchingVenues.length > 0 ? matchingVenues : MUSIC_VENUES.slice(0, 10);
+
+      const schemaItemList = {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": prog.heading,
+        "description": prog.description,
+        "url": `https://www.giglizard.us${prog.canonicalPath}`,
+        "numberOfItems": displayVenues.length,
+        "itemListElement": displayVenues.slice(0, 25).map((v, idx) => ({
+          "@type": "ListItem",
+          "position": idx + 1,
+          "item": {
+            "@type": "MusicVenue",
+            "name": v.name,
+            "address": v.address,
+            "maximumAttendeeCapacity": v.capacity,
+            "telephone": (v.contactPhone && !v.contactPhone.includes("555")) ? v.contactPhone : undefined,
+            "url": `https://www.giglizard.us${buildCanonicalVenuePath(v)}`,
+            "description": v.description
+          }
+        }))
+      };
+
+      html = html.replace(
+        "</head>",
+        `    <script type="application/ld+json">\n    ${JSON.stringify(schemaItemList, null, 2)}\n    </script>\n  </head>`
+      );
+
+      const progMain = `<main style="padding: 30px 20px; font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 900px; margin: 0 auto; color: #1e293b;">
         <nav aria-label="Breadcrumb" style="font-size: 13px; color: #64748b; margin-bottom: 20px;">
           <a href="/" style="color: #4f46e5; text-decoration: underline;">Home</a> &gt; 
           <a href="/venues" style="color: #4f46e5; text-decoration: underline;">Venues</a> &gt; 
@@ -2441,7 +2662,7 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
         <div style="margin-top: 25px; padding: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;">
           <h2 style="font-size: 20px; color: #0f172a; margin-top: 0;">Verified Stages &amp; Talent Buyer Inboxes (${displayVenues.length} Stages)</h2>
           <ul style="padding-left: 20px; line-height: 1.6;">
-            ${displayVenues.map(v => `<li><strong>${v.name}</strong> (Capacity: ${v.capacity}) — ${v.address} | Genres: ${v.genres.join(", ")} | Booking Email: ${v.contactEmail}</li>`).join("\n            ")}
+            ${displayVenues.map(v => `<li><strong><a href="${buildCanonicalVenuePath(v)}" style="color: #4f46e5; text-decoration: underline;">${v.name}</a></strong> (Capacity: ${v.capacity}) — ${v.address} | Genres: ${v.genres.join(", ")} | Booking Email: ${v.contactEmail}</li>`).join("\n            ")}
           </ul>
         </div>
         <footer style="margin-top: 40px; padding: 25px 20px; background: #0f172a; color: #94a3b8; font-size: 13px; text-align: center; border-radius: 8px;">
@@ -2455,7 +2676,8 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
           </p>
         </footer>
       </main>`;
-    html = html.replace(/<main style="padding: 30px.*?<\/main>/s, progMain);
+      html = html.replace(/<main style="padding: 30px.*?<\/main>/s, progMain);
+    }
   } else {
     // Inject custom Schema.org structured data for articles, stage plot & poster tools
     if (article) {
@@ -2964,4 +3186,5 @@ if (process.env.VERCEL !== "1" && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
     console.error("[Server] Fatal error in startServer:", err);
   });
 }
+
 

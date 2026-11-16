@@ -9,6 +9,10 @@
  */
 
 import { CONTINENTAL_US_STATES } from "../constants/states";
+import { MUSIC_VENUES, VENUE_ALIAS_ID_MAP } from "../data/venues";
+import { Venue } from "../types";
+
+export const CANONICAL_DOMAIN = "https://www.giglizard.us";
 
 export interface ProgrammaticVenueRoute {
   isProgrammatic: boolean;
@@ -20,6 +24,7 @@ export interface ProgrammaticVenueRoute {
   venueSlug?: string;
   venueName?: string;
   venueId?: string;
+  venue?: Venue;
   canonicalPath: string;
   title: string;
   description: string;
@@ -113,6 +118,10 @@ const STATE_MAP: Record<string, string> = {
   DC: "District of Columbia", BC: "British Columbia"
 };
 
+const REVERSE_STATE_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_MAP).map(([abbr, full]) => [full.toLowerCase(), abbr])
+);
+
 function capitalizeWords(str: string): string {
   return str
     .split(/[- ]+/)
@@ -122,15 +131,228 @@ function capitalizeWords(str: string): string {
 }
 
 /**
+ * Normalizes a string into a lowercase, hyphen-separated URL slug segment
+ * with no leading/trailing hyphens.
+ */
+export function slugifySeoSegment(value: string): string {
+  return (value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Extracts a normalized 2-letter uppercase state code from venue fields or address.
+ */
+export function extractVenueStateCode(venue: { state?: string; address?: string }): string {
+  const rawState = (venue.state || "").trim();
+  if (/^[a-z]{2}$/i.test(rawState)) {
+    return rawState.toUpperCase();
+  }
+  if (rawState && REVERSE_STATE_MAP[rawState.toLowerCase()]) {
+    return REVERSE_STATE_MAP[rawState.toLowerCase()];
+  }
+  const addrMatch = (venue.address || "").match(/,\s*([A-Z]{2})(?:\s+\d{5}|\s*,|\s*$)/i);
+  if (addrMatch) {
+    return addrMatch[1].toUpperCase();
+  }
+  return "";
+}
+
+/**
+ * Single canonical public path for any venue:
+ *   /venues/[city-state]/[slug]  (e.g. /venues/nashville-tn/club-handy)
+ */
+export function buildCanonicalVenuePath(venue: {
+  id?: string;
+  name: string;
+  city?: string;
+  state?: string;
+  address?: string;
+}): string {
+  const citySlug = slugifySeoSegment(venue.city || "");
+  const stateCode = extractVenueStateCode(venue).toLowerCase();
+  const venueSlug = slugifySeoSegment(venue.name || venue.id || "venue");
+
+  if (citySlug && stateCode) {
+    return `/venues/${citySlug}-${stateCode}/${venueSlug}`;
+  }
+  return `/venues/venue/${slugifySeoSegment(venue.id || venueSlug)}`;
+}
+
+export function buildCanonicalVenueUrl(venue: {
+  id?: string;
+  name: string;
+  city?: string;
+  state?: string;
+  address?: string;
+}): string {
+  return `${CANONICAL_DOMAIN}${buildCanonicalVenuePath(venue)}`;
+}
+
+/**
+ * Looks up a venue by either:
+ *   1. UUID or secondary slug ID (`idOrSlug`, from /venues/venue/:id)
+ *   2. Canonical city-state + venue slug (`cityStateSlug` + `venueSlug`, from /venues/:city-state/:slug)
+ */
+export function findVenueByIdentifierOrSlug(
+  query: {
+    idOrSlug?: string;
+    cityStateSlug?: string;
+    venueSlug?: string;
+  },
+  venuesList: Venue[] = MUSIC_VENUES
+): Venue | null {
+  if (query.idOrSlug) {
+    const rawNeedle = query.idOrSlug.trim().toLowerCase();
+    const slugNeedle = slugifySeoSegment(rawNeedle);
+
+    // 0. Check complete raw alias map (handles all 59+ deduplicated UUIDs & legacy base slugs like "showbox-seattle")
+    if (VENUE_ALIAS_ID_MAP[rawNeedle]) {
+      return VENUE_ALIAS_ID_MAP[rawNeedle];
+    }
+
+    // 1. Exact ID match (UUID or slug ID like "wa-spokane-knitting-factory-spokane")
+    const exactId = venuesList.find(v => (v.id || "").toLowerCase() === rawNeedle);
+    if (exactId) return exactId;
+
+    // 2. Slugified ID match
+    const slugId = venuesList.find(v => slugifySeoSegment(v.id || "") === slugNeedle);
+    if (slugId) return slugId;
+
+    // 3. State-city-name OR name-city composite slug
+    const compositeMatch = venuesList.find(v => {
+      const stateCode = extractVenueStateCode(v).toLowerCase();
+      const citySlug = slugifySeoSegment(v.city || "");
+      const nameSlug = slugifySeoSegment(v.name);
+      const nameNoTheSlug = slugifySeoSegment((v.name || "").replace(/^the\s+/i, ""));
+      return (
+        slugifySeoSegment(`${stateCode} ${citySlug} ${nameSlug}`) === slugNeedle ||
+        slugifySeoSegment(`${nameSlug} ${citySlug}`) === slugNeedle ||
+        slugifySeoSegment(`${nameNoTheSlug} ${citySlug}`) === slugNeedle
+      );
+    });
+    if (compositeMatch) return compositeMatch;
+
+    // 4. Venue name slug fallback
+    const nameMatch = venuesList.find(v => slugifySeoSegment(v.name) === slugNeedle);
+    if (nameMatch) return nameMatch;
+
+    return null;
+  }
+
+  if (query.cityStateSlug && query.venueSlug) {
+    const targetCityState = slugifySeoSegment(query.cityStateSlug);
+    const targetVenueSlug = slugifySeoSegment(query.venueSlug);
+
+    return (
+      venuesList.find(v => {
+        const cityState = `${slugifySeoSegment(v.city || "")}-${extractVenueStateCode(v).toLowerCase()}`;
+        if (cityState !== targetCityState) return false;
+        return (
+          slugifySeoSegment(v.name) === targetVenueSlug ||
+          slugifySeoSegment(v.id || "") === targetVenueSlug
+        );
+      }) || null
+    );
+  }
+
+  return null;
+}
+
+/**
+ * Resolves any non-canonical venue URL (UUID, secondary slug, uppercase, trailing slash,
+ * or legacy un-trimmed hyphen) to its single canonical `/venues/[city-state]/[slug]` path.
+ * Returns null if the URL is already canonical or is not a redirectable venue profile URL.
+ */
+export function resolveVenueCanonicalRedirect(
+  rawPath: string,
+  venuesList: Venue[] = MUSIC_VENUES
+): string | null {
+  const pathOnly = rawPath.split("?")[0].split("#")[0];
+  const trimmed = pathOnly.replace(/^\/+|\/+$/g, "");
+  const parts = trimmed.split("/");
+
+  if (parts[0]?.toLowerCase() !== "venues" || parts.length < 2) {
+    return null;
+  }
+
+  // Old /venues/venue/:venueId (UUID or secondary slug)
+  if (parts.length === 3 && parts[1].toLowerCase() === "venue") {
+    const matched = findVenueByIdentifierOrSlug({ idOrSlug: parts[2] }, venuesList);
+    if (!matched) return null;
+    const canonicalPath = buildCanonicalVenuePath(matched);
+    return canonicalPath !== pathOnly ? canonicalPath : null;
+  }
+
+  // Canonical /venues/:city-state/:venueSlug — enforce lowercase, clean hyphens, no trailing slash
+  if (parts.length === 3 && /^(.+)-([a-z]{2})$/i.test(parts[1])) {
+    const matched = findVenueByIdentifierOrSlug(
+      { cityStateSlug: parts[1], venueSlug: parts[2] },
+      venuesList
+    );
+    if (matched) {
+      const canonicalPath = buildCanonicalVenuePath(matched);
+      return canonicalPath !== pathOnly ? canonicalPath : null;
+    }
+    const normalizedPath = `/venues/${slugifySeoSegment(parts[1])}/${slugifySeoSegment(parts[2])}`;
+    return normalizedPath !== pathOnly ? normalizedPath : null;
+  }
+
+  return null;
+}
+
+export function buildVenueProfileSeoRoute(
+  venue: Venue,
+  overrideCityStateSlug?: string,
+  overrideVenueSlug?: string
+): ProgrammaticVenueRoute {
+  const canonicalPath = buildCanonicalVenuePath(venue);
+  const city = venue.city || capitalizeWords((overrideCityStateSlug || "").replace(/-[a-z]{2}$/i, ""));
+  const stateCode = extractVenueStateCode(venue) || "US";
+  const stateName = STATE_MAP[stateCode] || stateCode;
+  const cityStateSlug = `${slugifySeoSegment(city)}-${stateCode.toLowerCase()}`;
+  const venueSlug = overrideVenueSlug ? slugifySeoSegment(overrideVenueSlug) : slugifySeoSegment(venue.name);
+  const capText = venue.capacity ? ` (${venue.capacity} cap)` : "";
+  const genreList = Array.isArray(venue.genres) && venue.genres.length > 0 ? venue.genres.slice(0, 4).join(", ") : "Live Music";
+
+  return {
+    isProgrammatic: true,
+    type: "venue-profile",
+    city,
+    stateCode,
+    stateName,
+    venueSlug,
+    venueName: venue.name,
+    venueId: venue.id,
+    venue,
+    canonicalPath,
+    title: `${venue.name} in ${city}, ${stateCode} — Venue Specs & Booking Contact | GigLizard`,
+    description: `Book shows at ${venue.name} in ${city}, ${stateCode}${capText}. Genres: ${genreList}. View verified booking email, house PA specs, and stage details on GigLizard.`,
+    heading: `${venue.name} — Live Music Venue & Booking Specs in ${city}, ${stateCode}`,
+    subhead: `Direct booking contact, soundboard/PA specs, room capacity${capText}, and touring details for ${venue.name} in ${city}, ${stateName}.`,
+    breadcrumb: [
+      { name: "Home", url: `${CANONICAL_DOMAIN}/` },
+      { name: "Venues", url: `${CANONICAL_DOMAIN}/venues` },
+      { name: `${city}, ${stateCode}`, url: `${CANONICAL_DOMAIN}/venues/${cityStateSlug}` },
+      { name: venue.name, url: `${CANONICAL_DOMAIN}${canonicalPath}` }
+    ]
+  };
+}
+
+/**
  * Parses any venue URL path into programmatic SEO details.
  * Examples:
+ *   /venues/nashville-tn/club-handy
  *   /venues/austin-tx
  *   /venues/rock/chicago
- *   /venues/seattle-wa
- *   /venues/portland-or
  */
-export function parseProgrammaticVenuePath(rawPath: string): ProgrammaticVenueRoute | null {
-  const clean = rawPath.replace(/^\/+|\/+$/g, "").toLowerCase();
+export function parseProgrammaticVenuePath(
+  rawPath: string,
+  venuesList: Venue[] = MUSIC_VENUES
+): ProgrammaticVenueRoute | null {
+  const clean = rawPath.split("?")[0].split("#")[0].replace(/^\/+|\/+$/g, "").toLowerCase();
   const parts = clean.split("/");
 
   if (parts[0] !== "venues" || parts.length < 2) {
@@ -139,36 +361,34 @@ export function parseProgrammaticVenuePath(rawPath: string): ProgrammaticVenueRo
 
   // Format 1: /venues/:cityState/:venueSlug OR /venues/venue/:venueId OR /venues/:genre/:city
   if (parts.length === 3) {
-    // Sub-format 1A: /venues/venue/:venueId
+    // Sub-format 1A: /venues/venue/:venueId (legacy UUID or secondary slug)
+    // Always resolve to the single canonical /venues/:city-state/:venueSlug path if found
     if (parts[1] === "venue") {
-      const venueId = parts[2];
-      return {
-        isProgrammatic: true,
-        type: "venue-profile",
-        venueId,
-        canonicalPath: `/venues/venue/${venueId}`,
-        title: "Live Music Venue & Production Specs | GigLizard",
-        description: "View verified booking contact email, stage specs, capacity, and production guidelines for touring acts on GigLizard.",
-        heading: "Live Music Venue & Production Specs",
-        subhead: "Comprehensive stage dimensions, soundboard specs, PA system, and talent buyer inboxes for independent touring bands.",
-        breadcrumb: [
-          { name: "Home", url: "https://www.giglizard.us/" },
-          { name: "Venues", url: "https://www.giglizard.us/venues" },
-          { name: "Venue Profile", url: `https://www.giglizard.us/venues/venue/${venueId}` }
-        ]
-      };
+      const matched = findVenueByIdentifierOrSlug({ idOrSlug: parts[2] }, venuesList);
+      if (!matched) {
+        return null;
+      }
+      return buildVenueProfileSeoRoute(matched);
     }
 
-    // Sub-format 1B: /venues/:city-state/:venueSlug (e.g. /venues/portland-or/doug-fir-lounge)
+    // Sub-format 1B: /venues/:city-state/:venueSlug (e.g. /venues/nashville-tn/club-handy)
     const cityStateMatch = parts[1].match(/^(.+)-([a-z]{2})$/i);
     if (cityStateMatch) {
-      const citySlug = cityStateMatch[1];
-      const stateSlug = cityStateMatch[2].toUpperCase();
+      const matched = findVenueByIdentifierOrSlug(
+        { cityStateSlug: parts[1], venueSlug: parts[2] },
+        venuesList
+      );
+      if (matched) {
+        return buildVenueProfileSeoRoute(matched, parts[1], parts[2]);
+      }
+
+      const citySlug = slugifySeoSegment(cityStateMatch[1]);
+      const stateCode = cityStateMatch[2].toUpperCase();
       const city = capitalizeWords(citySlug);
-      const stateCode = stateSlug;
       const stateName = STATE_MAP[stateCode] || stateCode;
-      const venueSlug = parts[2];
+      const venueSlug = slugifySeoSegment(parts[2]);
       const venueName = capitalizeWords(venueSlug);
+      const canonicalPath = `/venues/${citySlug}-${stateCode.toLowerCase()}/${venueSlug}`;
 
       return {
         isProgrammatic: true,
@@ -178,16 +398,16 @@ export function parseProgrammaticVenuePath(rawPath: string): ProgrammaticVenueRo
         stateName,
         venueSlug,
         venueName,
-        canonicalPath: `/venues/${parts[1]}/${venueSlug}`,
-        title: `${venueName} | Live Music Stage & Specs in ${city}, ${stateCode} - GigLizard`,
+        canonicalPath,
+        title: `${venueName} in ${city}, ${stateCode} — Venue Specs & Booking Contact | GigLizard`,
         description: `View verified booking contact email, stage specs, capacity, and production guidelines for ${venueName} in ${city}, ${stateCode}.`,
-        heading: `${venueName} - Live Music Venue & Booking Specs in ${city}, ${stateCode}`,
+        heading: `${venueName} — Live Music Venue & Booking Specs in ${city}, ${stateCode}`,
         subhead: `Direct talent buyer inboxes, soundboard channels, PA rig, and stage layout at ${venueName} in ${city}, ${stateName}.`,
         breadcrumb: [
-          { name: "Home", url: "https://www.giglizard.us/" },
-          { name: "Venues", url: "https://www.giglizard.us/venues" },
-          { name: `${city}, ${stateCode}`, url: `https://www.giglizard.us/venues/${parts[1]}` },
-          { name: venueName, url: `https://www.giglizard.us/venues/${parts[1]}/${venueSlug}` }
+          { name: "Home", url: `${CANONICAL_DOMAIN}/` },
+          { name: "Venues", url: `${CANONICAL_DOMAIN}/venues` },
+          { name: `${city}, ${stateCode}`, url: `${CANONICAL_DOMAIN}/venues/${citySlug}-${stateCode.toLowerCase()}` },
+          { name: venueName, url: `${CANONICAL_DOMAIN}${canonicalPath}` }
         ]
       };
     }

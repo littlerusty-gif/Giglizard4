@@ -46,7 +46,11 @@ import {
   downloadEmbeddedBandsAndVenuesCSV, 
   MigrationSyncResult 
 } from "./utils/adminMigration";
-import { ProgrammaticVenueRoute, parseProgrammaticVenuePath } from "./utils/venueSeoRoutes";
+import {
+  ProgrammaticVenueRoute,
+  parseProgrammaticVenuePath,
+  resolveVenueCanonicalRedirect
+} from "./utils/venueSeoRoutes";
 import { useDirectoryCounts } from "./utils/directoryCounts";
 import { updatePageSeo } from "./utils/seoManager";
 import { 
@@ -504,6 +508,20 @@ export default function GigLizardApp() {
     try {
       const cleanPath = window.location.pathname.replace(/\/$/, "");
       const cleanHash = window.location.hash.replace("#", "").replace(/\/$/, "");
+      const candidatePath = cleanPath.startsWith("/venues/")
+        ? cleanPath
+        : cleanHash.startsWith("venues/")
+        ? `/${cleanHash}`
+        : "";
+      if (candidatePath) {
+        const redirectTarget = resolveVenueCanonicalRedirect(candidatePath);
+        if (redirectTarget) {
+          try {
+            window.history.replaceState(null, "", redirectTarget);
+          } catch (_) {}
+          return parseProgrammaticVenuePath(redirectTarget);
+        }
+      }
       return parseProgrammaticVenuePath(cleanPath) || parseProgrammaticVenuePath(cleanHash);
     } catch (_) {
       return null;
@@ -735,7 +753,8 @@ export default function GigLizardApp() {
     } catch (_) {}
 
     const isProgrammaticRoute =
-      (activeTab === "venues" && (Boolean(programmaticVenueRoute) || hasFilterQuery)) ||
+      (activeTab === "venues" &&
+        ((Boolean(programmaticVenueRoute) && programmaticVenueRoute?.type !== "venue-profile") || hasFilterQuery)) ||
       (activeTab === "bands" && (Boolean(bandFilterSlug) || hasFilterQuery)) ||
       Boolean(publicStagePlotBandId);
 
@@ -819,7 +838,15 @@ export default function GigLizardApp() {
     if (!clean) return false;
 
     if (clean.startsWith("venues/")) {
-      const prog = parseProgrammaticVenuePath(clean);
+      const rawCandidate = `/${clean}`;
+      const redirectTarget = resolveVenueCanonicalRedirect(rawCandidate);
+      const effectivePath = redirectTarget || rawCandidate;
+      if (redirectTarget) {
+        try {
+          window.history.replaceState(null, "", redirectTarget);
+        } catch (_) {}
+      }
+      const prog = parseProgrammaticVenuePath(effectivePath);
       if (prog) {
         setProgrammaticVenueRoute(prog);
         setActiveTabState("venues");
@@ -2435,6 +2462,10 @@ export default function GigLizardApp() {
               currentAccount={currentAccount}
               programmaticRoute={programmaticVenueRoute}
               onNavigateProgrammaticRoute={(route, url) => {
+                if (url === "/") {
+                  setActiveTab("home");
+                  return;
+                }
                 setProgrammaticVenueRoute(route);
                 if (url) {
                   try {

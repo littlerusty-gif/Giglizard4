@@ -2,7 +2,15 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Venue, UserAccount } from "../types";
 import { MUSIC_VENUES } from "../data/venues";
 import { supabase, buildVenueCompositeKey, getCachedDatabaseVenues } from "../lib/supabase";
-import { ProgrammaticVenueRoute } from "../utils/venueSeoRoutes";
+import {
+  ProgrammaticVenueRoute,
+  buildCanonicalVenuePath,
+  buildCanonicalVenueUrl,
+  buildVenueProfileSeoRoute,
+  parseProgrammaticVenuePath,
+  slugifySeoSegment
+} from "../utils/venueSeoRoutes";
+import { DEFAULT_INDEX_ROBOTS, NOINDEX_FOLLOW_ROBOTS } from "../utils/seoManager";
 import {
   MapPin,
   Mail,
@@ -257,12 +265,17 @@ export default function CityVenueDirectory({
         if (isMounted) {
           setVenues(finalList);
           // If the route specified an individual venue, highlight it
-          if (programmaticRoute.venueSlug || programmaticRoute.venueName) {
-            const target = finalList.find(v => 
-              v.name.toLowerCase().replace(/[^a-z0-9]+/g, "-") === programmaticRoute.venueSlug?.toLowerCase() ||
-              v.name.toLowerCase() === programmaticRoute.venueName?.toLowerCase()
+          if (programmaticRoute.venueSlug || programmaticRoute.venueName || programmaticRoute.venueId) {
+            const targetSlug = slugifySeoSegment(programmaticRoute.venueSlug || programmaticRoute.venueName || "");
+            const targetId = (programmaticRoute.venueId || "").toLowerCase();
+            const target = finalList.find(v =>
+              (targetId && v.id.toLowerCase() === targetId) ||
+              (targetSlug && slugifySeoSegment(v.name) === targetSlug) ||
+              (targetSlug && slugifySeoSegment(v.id) === targetSlug)
             );
-            if (target) setSelectedVenue(target);
+            setSelectedVenue(target || null);
+          } else {
+            setSelectedVenue(null);
           }
           setLoading(false);
         }
@@ -283,7 +296,7 @@ export default function CityVenueDirectory({
       isMounted = false;
       window.removeEventListener("giglizard_venues_updated", onVenuesUpdated);
     };
-  }, [city, stateCode, programmaticRoute.venueSlug, programmaticRoute.venueName]);
+  }, [city, stateCode, programmaticRoute.venueSlug, programmaticRoute.venueName, programmaticRoute.venueId]);
 
   // Compute City Summary Bar Metrics
   const summaryMetrics = useMemo(() => {
@@ -320,17 +333,49 @@ export default function CityVenueDirectory({
     };
   }, [venues]);
 
-  // Dynamic Metadata & JSON-LD ItemList Schema Injection
+  // Dynamic Metadata & JSON-LD Schema Injection (strictly aligned with canonical URL)
   useEffect(() => {
-    const pageTitle = `Music Venues in ${city}, ${stateCode} | Booking & Production Specs - GigLizard`;
-    const pageDescription = `Find and contact verified music venues in ${city}, ${stateCode}. View stage specs, capacities, and DIY booking guidelines for touring bands.`;
-    const canonicalUrl = `https://www.giglizard.us/venues/${city.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${stateCode.toLowerCase()}`;
+    const cityStateSlug = `${slugifySeoSegment(city)}-${stateCode.toLowerCase()}`;
+    const isVenueProfile = programmaticRoute.type === "venue-profile" || Boolean(selectedVenue);
 
-    // Update document title and description
+    const activeVenueName = selectedVenue?.name || programmaticRoute.venueName || "";
+    const pageTitle = isVenueProfile && activeVenueName
+      ? `${activeVenueName} in ${city}, ${stateCode} — Venue Specs & Booking Contact | GigLizard`
+      : `Music Venues in ${city}, ${stateCode} | Booking & Production Specs - GigLizard`;
+
+    const pageDescription = isVenueProfile && activeVenueName
+      ? (selectedVenue?.description ||
+          `View verified booking contact email, stage specs, capacity, and production guidelines for ${activeVenueName} in ${city}, ${stateCode}.`)
+      : `Find and contact verified music venues in ${city}, ${stateCode}. View stage specs, capacities, and DIY booking guidelines for touring bands.`;
+
+    const canonicalUrl = isVenueProfile
+      ? (selectedVenue
+          ? buildCanonicalVenueUrl(selectedVenue)
+          : `https://www.giglizard.us${programmaticRoute.canonicalPath}`)
+      : `https://www.giglizard.us/venues/${cityStateSlug}`;
+
+    const robotsValue = isVenueProfile ? DEFAULT_INDEX_ROBOTS : NOINDEX_FOLLOW_ROBOTS;
+
+    // Update document title, description, robots, OpenGraph, and canonical link
     document.title = pageTitle;
 
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) metaDesc.setAttribute("content", pageDescription);
+    const setMetaTag = (attr: "name" | "property", key: string, content: string) => {
+      let el = document.querySelector(`meta[${attr}="${key}"]`);
+      if (!el) {
+        el = document.createElement("meta");
+        el.setAttribute(attr, key);
+        document.head.appendChild(el);
+      }
+      el.setAttribute("content", content);
+    };
+
+    setMetaTag("name", "description", pageDescription);
+    setMetaTag("name", "robots", robotsValue);
+    setMetaTag("name", "googlebot", robotsValue);
+    setMetaTag("name", "bingbot", robotsValue);
+    setMetaTag("property", "og:title", pageTitle);
+    setMetaTag("property", "og:description", pageDescription);
+    setMetaTag("property", "og:url", canonicalUrl);
 
     let canonicalLink = document.querySelector('link[rel="canonical"]');
     if (!canonicalLink) {
@@ -340,34 +385,55 @@ export default function CityVenueDirectory({
     }
     canonicalLink.setAttribute("href", canonicalUrl);
 
-    // Inject Schema.org ItemList with MusicVenue items
-    const schemaItemList = {
-      "@context": "https://schema.org",
-      "@type": "ItemList",
-      "name": `Live Music Venues & Booking Specs in ${city}, ${stateCode}`,
-      "description": pageDescription,
-      "url": canonicalUrl,
-      "numberOfItems": venues.length,
-      "itemListElement": venues.slice(0, 30).map((v, idx) => ({
-        "@type": "ListItem",
-        "position": idx + 1,
-        "item": {
+    // Inject Schema.org MusicVenue (single venue) or ItemList (city hub)
+    const schemaPayload = isVenueProfile && selectedVenue
+      ? {
+          "@context": "https://schema.org",
           "@type": "MusicVenue",
-          "name": v.name,
+          "name": selectedVenue.name,
+          "url": canonicalUrl,
           "address": {
             "@type": "PostalAddress",
-            "streetAddress": v.address,
-            "addressLocality": v.city,
-            "addressRegion": v.state,
+            "streetAddress": selectedVenue.address,
+            "addressLocality": selectedVenue.city,
+            "addressRegion": selectedVenue.state,
             "addressCountry": "US"
           },
-          "maximumAttendeeCapacity": v.capacity || undefined,
-          "telephone": v.phone || undefined,
-          "url": v.website ? (v.website.startsWith("http") ? v.website : `https://${v.website}`) : undefined,
-          "description": v.description || undefined
+          "maximumAttendeeCapacity": selectedVenue.capacity || undefined,
+          "telephone": selectedVenue.phone || undefined,
+          "sameAs": selectedVenue.website
+            ? (selectedVenue.website.startsWith("http") ? selectedVenue.website : `https://${selectedVenue.website}`)
+            : undefined,
+          "description": selectedVenue.description || undefined
         }
-      }))
-    };
+      : {
+          "@context": "https://schema.org",
+          "@type": "ItemList",
+          "name": `Live Music Venues & Booking Specs in ${city}, ${stateCode}`,
+          "description": pageDescription,
+          "url": canonicalUrl,
+          "numberOfItems": venues.length,
+          "itemListElement": venues.slice(0, 30).map((v, idx) => ({
+            "@type": "ListItem",
+            "position": idx + 1,
+            "item": {
+              "@type": "MusicVenue",
+              "name": v.name,
+              "url": buildCanonicalVenueUrl(v),
+              "address": {
+                "@type": "PostalAddress",
+                "streetAddress": v.address,
+                "addressLocality": v.city,
+                "addressRegion": v.state,
+                "addressCountry": "US"
+              },
+              "maximumAttendeeCapacity": v.capacity || undefined,
+              "telephone": v.phone || undefined,
+              "sameAs": v.website ? (v.website.startsWith("http") ? v.website : `https://${v.website}`) : undefined,
+              "description": v.description || undefined
+            }
+          }))
+        };
 
     let scriptTag = document.getElementById("programmatic-city-jsonld") as HTMLScriptElement | null;
     if (!scriptTag) {
@@ -376,13 +442,45 @@ export default function CityVenueDirectory({
       scriptTag.type = "application/ld+json";
       document.head.appendChild(scriptTag);
     }
-    scriptTag.text = JSON.stringify(schemaItemList, null, 2);
+    scriptTag.text = JSON.stringify(schemaPayload, null, 2);
 
     return () => {
       const existing = document.getElementById("programmatic-city-jsonld");
       if (existing) existing.remove();
     };
-  }, [city, stateCode, venues]);
+  }, [city, stateCode, venues, selectedVenue, programmaticRoute.type, programmaticRoute.canonicalPath, programmaticRoute.venueName]);
+
+  const handleOpenVenueProfile = (venue: VenueRecord) => {
+    setSelectedVenue(venue);
+    const canonicalPath = buildCanonicalVenuePath(venue);
+    if (onNavigateProgrammaticRoute) {
+      const venueObj: Venue = {
+        id: venue.id,
+        name: venue.name,
+        city: venue.city,
+        state: venue.state,
+        country: "US",
+        address: venue.address,
+        capacity: venue.capacity || 200,
+        genres: venue.genres_accepted || ["Live Music"],
+        contactEmail: venue.booking_email,
+        contactPhone: venue.phone || "",
+        hasPA: Boolean(venue.hasPA),
+        hasLighting: Boolean(venue.hasLighting),
+        description: venue.description || "",
+        website: venue.website || ""
+      };
+      onNavigateProgrammaticRoute(buildVenueProfileSeoRoute(venueObj), canonicalPath);
+    }
+  };
+
+  const handleCloseVenueProfile = () => {
+    setSelectedVenue(null);
+    if (programmaticRoute.type === "venue-profile" && onNavigateProgrammaticRoute) {
+      const cityHubPath = `/venues/${slugifySeoSegment(city)}-${stateCode.toLowerCase()}`;
+      onNavigateProgrammaticRoute(parseProgrammaticVenuePath(cityHubPath), cityHubPath);
+    }
+  };
 
   const handleCopyEmail = (email: string, id: string) => {
     navigator.clipboard.writeText(email);
@@ -600,7 +698,7 @@ export default function CityVenueDirectory({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             {venues.map((venue) => {
               const isSelected = selectedVenue?.id === venue.id;
-              const venueSlug = venue.name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+              const canonicalVenuePath = buildCanonicalVenuePath(venue);
 
               return (
                 <div
@@ -617,7 +715,16 @@ export default function CityVenueDirectory({
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h4 className="text-lg font-black text-slate-900 tracking-tight leading-snug">
-                          {venue.name}
+                          <a
+                            href={canonicalVenuePath}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              handleOpenVenueProfile(venue);
+                            }}
+                            className="hover:text-indigo-600 transition-colors"
+                          >
+                            {venue.name}
+                          </a>
                         </h4>
                         <div className="flex items-center gap-1.5 text-xs text-slate-500 mt-1">
                           <MapPin className="w-3.5 h-3.5 text-rose-500 shrink-0" />
@@ -749,10 +856,10 @@ export default function CityVenueDirectory({
                       </button>
 
                       <a
-                        href={`/venues/${city.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${stateCode.toLowerCase()}/${venueSlug}`}
+                        href={canonicalVenuePath}
                         onClick={(e) => {
                           e.preventDefault();
-                          setSelectedVenue(venue);
+                          handleOpenVenueProfile(venue);
                         }}
                         className="text-[11px] font-bold text-slate-500 hover:text-slate-900 flex items-center gap-1 transition-colors"
                       >
@@ -774,7 +881,7 @@ export default function CityVenueDirectory({
           role="dialog"
           aria-modal="true"
           className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fade-in"
-          onClick={() => setSelectedVenue(null)}
+          onClick={handleCloseVenueProfile}
         >
           <div
             className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 space-y-5 border border-slate-200 shadow-2xl relative"
@@ -796,7 +903,7 @@ export default function CityVenueDirectory({
 
               <button
                 type="button"
-                onClick={() => setSelectedVenue(null)}
+                onClick={handleCloseVenueProfile}
                 className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center font-bold text-sm cursor-pointer"
               >
                 ✕
@@ -850,7 +957,7 @@ export default function CityVenueDirectory({
 
               <button
                 type="button"
-                onClick={() => setSelectedVenue(null)}
+                onClick={handleCloseVenueProfile}
                 className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs cursor-pointer"
               >
                 Close Specs

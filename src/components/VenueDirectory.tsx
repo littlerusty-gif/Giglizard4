@@ -23,7 +23,14 @@ import {
   supabase
 } from "../lib/supabase";
 import { CONTINENTAL_US_STATES } from "../constants/states";
-import { ProgrammaticVenueRoute, POPULAR_TOURING_CITIES, POPULAR_GENRE_CITY_ROUTES, parseProgrammaticVenuePath } from "../utils/venueSeoRoutes";
+import {
+  ProgrammaticVenueRoute,
+  POPULAR_TOURING_CITIES,
+  POPULAR_GENRE_CITY_ROUTES,
+  parseProgrammaticVenuePath,
+  buildCanonicalVenuePath,
+  buildVenueProfileSeoRoute
+} from "../utils/venueSeoRoutes";
 import { useDirectoryCounts } from "../utils/directoryCounts";
 import CityVenueDirectory from "./CityVenueDirectory";
 
@@ -1231,6 +1238,7 @@ export default function VenueDirectory({
         {filteredVenues.map((v) => {
           const isChosen = selectedVenueId === v.id;
           const stats = getRatingStats(v.id, v.name, "venue");
+          const canonicalVenuePath = buildCanonicalVenuePath(v);
 
           return (
             <div
@@ -1247,7 +1255,18 @@ export default function VenueDirectory({
                 <div className="flex justify-between items-start" id={`venue-title-row-${v.id}`}>
                   <div>
                     <h4 className="text-base font-black text-gray-900 tracking-tight" id={`venue-name-${v.id}`}>
-                      {v.name}
+                      <a
+                        href={canonicalVenuePath}
+                        onClick={(e) => {
+                          if (onNavigateProgrammaticRoute) {
+                            e.preventDefault();
+                            onNavigateProgrammaticRoute(buildVenueProfileSeoRoute(v), canonicalVenuePath);
+                          }
+                        }}
+                        className="hover:text-indigo-600 transition-colors"
+                      >
+                        {v.name}
+                      </a>
                     </h4>
                     <p className="text-xs text-gray-400 font-medium flex items-center gap-1 mt-0.5" id={`venue-loc-${v.id}`}>
                       <MapPin className="w-3.5 h-3.5 text-rose-500" />
@@ -1371,6 +1390,20 @@ export default function VenueDirectory({
                   <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
                   Rate & View Community Reviews ({stats.count})
                 </button>
+
+                <a
+                  href={canonicalVenuePath}
+                  onClick={(e) => {
+                    if (onNavigateProgrammaticRoute) {
+                      e.preventDefault();
+                      onNavigateProgrammaticRoute(buildVenueProfileSeoRoute(v), canonicalVenuePath);
+                    }
+                  }}
+                  className="w-full py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 flex items-center justify-center gap-1.5"
+                >
+                  <ArrowRight className="w-3.5 h-3.5 text-indigo-600" />
+                  View Venue Page &amp; Specs
+                </a>
 
                 <button
                   type="button"

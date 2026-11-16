@@ -239,8 +239,9 @@ const ALL_RAW_VENUES: Venue[] = [
   ...NATIONAL_SUPABASE_VENUES
 ];
 
-const seenVenueKeys = new Set<string>();
+const seenVenueKeys = new Map<string, Venue>();
 export const MUSIC_VENUES: Venue[] = [];
+export const VENUE_ALIAS_ID_MAP: Record<string, Venue> = {};
 
 for (const venue of ALL_RAW_VENUES) {
   const normName = (venue.name || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -248,9 +249,14 @@ for (const venue of ALL_RAW_VENUES) {
   const normState = (venue.state || "").trim().toUpperCase();
   const key = `${normName}__${normCity}__${normState}`;
 
-  if (!seenVenueKeys.has(key)) {
-    seenVenueKeys.add(key);
-    MUSIC_VENUES.push(venue);
+  let kept = seenVenueKeys.get(key);
+  if (!kept) {
+    kept = venue;
+    seenVenueKeys.set(key, kept);
+    MUSIC_VENUES.push(kept);
+  }
+  if (venue.id) {
+    VENUE_ALIAS_ID_MAP[venue.id.toLowerCase()] = kept;
   }
 }
 

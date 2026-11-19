@@ -390,7 +390,7 @@ export const FOUNDER_PHOTOS: FounderPhoto[] = [
   {
     id: "festival-stage",
     title: "Festival Stage Production & FOH",
-    role: "Front-of-House Audio Engineer",
+    role: "Patch Tech/Monitor Engineer",
     desc: "Stage rigging, radio comms, and audio coordination at massive outdoor festival concert stages.",
     srcWebp: "/assets/founder/little_rusty_festival.webp",
     srcJpg: "/assets/founder/little_rusty_festival.jpg",

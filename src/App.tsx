@@ -36,6 +36,7 @@ import PrivacyPolicyPage from "./components/PrivacyPolicyPage";
 import ContactPage from "./components/ContactPage";
 import { TOUR_ARTICLES, getArticleBySlug } from "./data/tourArticles";
 import { fetchAllHeyCatchArticles, HEYCATCH_API_KEY } from "./utils/heycatchBlog";
+import { WEEKLY_BLOG_POSTS } from "./data/weeklyBlogPosts";
 import Footer from "./components/Footer";
 import gigLizardLogo from "./assets/images/giglizard_logo_hd.png";
 import { recordLiveVisit } from "./utils/analyticsStore";
@@ -146,8 +147,8 @@ export default function GigLizardApp() {
   const [selectedBlogSlug, setSelectedBlogSlug] = useState<string | null>(getInitialBlogSlug);
   const [bandFilterSlug, setBandFilterSlug] = useState<string | null>(getInitialBandFilterSlug);
 
-  // HeyCatch blog article count (Guide: Hide "Blog" nav link when total is 0)
-  const [hasBlogArticles, setHasBlogArticles] = useState<boolean>(false);
+  // Blog article count (Guide: Hide "Blog" nav link when total is 0)
+  const [hasBlogArticles, setHasBlogArticles] = useState<boolean>(() => WEEKLY_BLOG_POSTS.length > 0);
   useEffect(() => {
     fetchAllHeyCatchArticles(HEYCATCH_API_KEY).then(res => {
       setHasBlogArticles((res.total || 0) > 0 || (res.articles && res.articles.length > 0));
@@ -710,7 +711,7 @@ export default function GigLizardApp() {
       advisor: "https://www.giglizard.us/faq",
       verification: "https://www.giglizard.us/verification",
       articles: "https://www.giglizard.us/articles",
-      blog: "https://www.giglizard.us/articles",
+      blog: "https://www.giglizard.us/blog",
       privacy: "https://www.giglizard.us/privacy",
       contact: "https://www.giglizard.us/contact",
       admin: "https://www.giglizard.us/admin"
@@ -737,7 +738,7 @@ export default function GigLizardApp() {
       if (selectedBlogSlug) {
         canonicalHref = `https://www.giglizard.us/blog/${selectedBlogSlug}`;
       } else {
-        canonicalHref = "https://www.giglizard.us/articles";
+        canonicalHref = "https://www.giglizard.us/blog";
       }
     } else if (activeTab === "venues" && programmaticVenueRoute) {
       pageTitle = programmaticVenueRoute.title;

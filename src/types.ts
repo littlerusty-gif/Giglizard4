@@ -16,6 +16,14 @@ export interface Venue {
   password?: string;
 }
 
+export type CustomGearIconShape =
+  | "strings_upright"
+  | "grand_piano_keys"
+  | "horns_woodwinds"
+  | "percussion"
+  | "amp_cabinet"
+  | "mic_di_box";
+
 export type EquipmentType = 
   | "drum_kit"
   | "guitar_amp"
@@ -35,7 +43,8 @@ export type EquipmentType =
   | "bass_guitar"
   | "laptop_rig"
   | "saxophone"
-  | "drum_pad";
+  | "drum_pad"
+  | "custom_gear";
 
 export interface StageElement {
   id: string;
@@ -47,6 +56,8 @@ export interface StageElement {
   mixNumber?: number; // Optional monitor aux mix number (1, 2, 3, etc.)
   notes?: string;
   kickType?: "single" | "dual"; // Single or dual bass drums on drum kit
+  customIcon?: CustomGearIconShape;
+  micOrDi?: string;
 }
 
 export interface InputChannel {

@@ -5,6 +5,7 @@
  */
 
 import sanitizeHtml from "sanitize-html";
+import { WEEKLY_BLOG_POSTS } from "../data/weeklyBlogPosts";
 
 export interface HeyCatchArticleListItem {
   id: string;
@@ -49,8 +50,34 @@ let cachedArticleList: { articles: HeyCatchArticleListItem[]; total: number; tim
 const articleCache = new Map<string, { article: HeyCatchArticleDetail; timestamp: number }>();
 const CACHE_TTL_MS = 120 * 1000;
 
+function mergeWeeklyAndRemoteArticles(remoteArticles: HeyCatchArticleListItem[]): HeyCatchArticleListItem[] {
+  const seenSlugs = new Set<string>();
+  const combined: HeyCatchArticleListItem[] = [];
+
+  for (const post of WEEKLY_BLOG_POSTS) {
+    if (!seenSlugs.has(post.slug)) {
+      seenSlugs.add(post.slug);
+      const { content_html: _html, jsonLd: _jsonLd, content_markdown: _md, ...listItem } = post;
+      combined.push(listItem);
+    }
+  }
+
+  for (const art of remoteArticles) {
+    if (art?.slug && !seenSlugs.has(art.slug)) {
+      seenSlugs.add(art.slug);
+      combined.push(art);
+    }
+  }
+
+  return combined.sort((a, b) => {
+    const da = Date.parse(a.published || a.published_at || "1970-01-01");
+    const db = Date.parse(b.published || b.published_at || "1970-01-01");
+    return db - da;
+  });
+}
+
 /**
- * Fetch ALL published articles from HeyCatch with pagination (offset += 50)
+ * Fetch ALL published articles from HeyCatch with pagination (offset += 50) + GigLizard weekly blog posts
  */
 export async function fetchAllHeyCatchArticles(apiKey: string = HEYCATCH_API_KEY): Promise<{ articles: HeyCatchArticleListItem[]; total: number }> {
   const now = Date.now();
@@ -58,10 +85,10 @@ export async function fetchAllHeyCatchArticles(apiKey: string = HEYCATCH_API_KEY
     return { articles: cachedArticleList.articles, total: cachedArticleList.total };
   }
 
-  const allArticles: HeyCatchArticleListItem[] = [];
+  const remoteArticles: HeyCatchArticleListItem[] = [];
   let offset = 0;
   const limit = 50;
-  let total = 0;
+  let remoteTotal = 0;
 
   try {
     while (true) {
@@ -73,47 +100,58 @@ export async function fetchAllHeyCatchArticles(apiKey: string = HEYCATCH_API_KEY
       if (!res.ok) {
         if (res.status === 404 || res.status === 403 || res.status === 401) {
           console.warn(`[HeyCatch] List API answered ${res.status}`);
-          return cachedArticleList ? { articles: cachedArticleList.articles, total: cachedArticleList.total } : { articles: [], total: 0 };
+          break;
         }
         break;
       }
 
       const data: HeyCatchListResponse = await res.json();
       const batch = data.articles || [];
-      total = data.total || 0;
-      allArticles.push(...batch);
+      remoteTotal = data.total || 0;
+      remoteArticles.push(...batch);
 
-      if (allArticles.length >= total || batch.length === 0) {
+      if (remoteArticles.length >= remoteTotal || batch.length === 0) {
         break;
       }
       offset += limit;
     }
 
+    const merged = mergeWeeklyAndRemoteArticles(remoteArticles);
     cachedArticleList = {
-      articles: allArticles,
-      total,
+      articles: merged,
+      total: merged.length,
       timestamp: now
     };
 
-    return { articles: allArticles, total };
+    return { articles: merged, total: merged.length };
   } catch (err) {
     console.warn("[HeyCatch] Error fetching articles list:", err);
-    return cachedArticleList ? { articles: cachedArticleList.articles, total: cachedArticleList.total } : { articles: [], total: 0 };
+    if (cachedArticleList) {
+      return { articles: cachedArticleList.articles, total: cachedArticleList.total };
+    }
+    const localOnly = mergeWeeklyAndRemoteArticles([]);
+    return { articles: localOnly, total: localOnly.length };
   }
 }
 
 /**
- * Fetch a single article by slug or id
+ * Fetch a single article by slug or id (checks local weekly dispatches first, then HeyCatch API)
  */
 export async function fetchHeyCatchArticleBySlug(slug: string, apiKey: string = HEYCATCH_API_KEY): Promise<HeyCatchArticleDetail | null> {
+  const cleanSlug = (slug || "").trim();
+  const localMatch = WEEKLY_BLOG_POSTS.find(p => p.slug === cleanSlug || p.id === cleanSlug);
+  if (localMatch) {
+    return localMatch;
+  }
+
   const now = Date.now();
-  const cached = articleCache.get(slug);
+  const cached = articleCache.get(cleanSlug);
   if (cached && (now - cached.timestamp < CACHE_TTL_MS)) {
     return cached.article;
   }
 
   try {
-    const url = `${HEYCATCH_API_BASE}/articles/${encodeURIComponent(slug)}?key=${encodeURIComponent(apiKey)}`;
+    const url = `${HEYCATCH_API_BASE}/articles/${encodeURIComponent(cleanSlug)}?key=${encodeURIComponent(apiKey)}`;
     const res = await fetch(url, {
       headers: { "Accept": "application/json" }
     });
@@ -122,7 +160,7 @@ export async function fetchHeyCatchArticleBySlug(slug: string, apiKey: string = 
       return null;
     }
     if (!res.ok) {
-      console.warn(`[HeyCatch] Article ${slug} answered ${res.status}`);
+      console.warn(`[HeyCatch] Article ${cleanSlug} answered ${res.status}`);
       return cached ? cached.article : null;
     }
 
@@ -130,10 +168,10 @@ export async function fetchHeyCatchArticleBySlug(slug: string, apiKey: string = 
     const article: HeyCatchArticleDetail = data.article;
     if (!article) return null;
 
-    articleCache.set(slug, { article, timestamp: now });
+    articleCache.set(cleanSlug, { article, timestamp: now });
     return article;
   } catch (err) {
-    console.warn(`[HeyCatch] Error fetching article ${slug}:`, err);
+    console.warn(`[HeyCatch] Error fetching article ${cleanSlug}:`, err);
     return cached ? cached.article : null;
   }
 }

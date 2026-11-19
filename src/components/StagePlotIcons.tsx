@@ -1,5 +1,5 @@
 import React from "react";
-import { EquipmentType } from "../types";
+import { EquipmentType, CustomGearIconShape } from "../types";
 
 interface IconProps {
   type: EquipmentType;
@@ -10,17 +10,347 @@ interface IconProps {
   mixNumber?: number;
   theme?: "blueprint" | "stage" | "print";
   kickType?: "single" | "dual";
+  customSvg?: React.ReactNode;
+  customIcon?: CustomGearIconShape;
 }
 
-/**
- * Professional CAD & Rider-grade vector illustrations for live music stage plots and tech riders.
- * Designed to match front-of-house (FOH) concert rider standards:
- * - High visual clarity, crisp vector geometry & authentic instrument proportions
- * - Realistic drum kit with riser, cymbals, SPD percussion pad
- * - Stratocaster electric guitar, Precision bass, synth keyboard on stand, saxophone
- * - Stage monitors with prominent high-contrast red OUT badges (OUT 1, OUT 2, etc.)
- * - Professional D.I. boxes, wireless/wired in-ear packs, and laptop audio workstations
- */
+export const BassGuitarSvg: React.FC<{ className?: string }> = ({ className = "w-full h-full" }) => (
+  <svg viewBox="0 0 80 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    {/* Headstock (4 inline bass tuners on left) */}
+    <path
+      d="M36 8 C36 4, 44 4, 45 9 C46 14, 43 22, 43 27 L36 27 Z"
+      fill="#E8B87D"
+      stroke="#78350F"
+      strokeWidth="1.2"
+    />
+    {/* 4 Clover Tuning Pegs */}
+    <circle cx="32.5" cy="10" r="2.2" fill="#CBD5E1" stroke="#334155" strokeWidth="0.9" />
+    <circle cx="32.5" cy="14.5" r="2.2" fill="#CBD5E1" stroke="#334155" strokeWidth="0.9" />
+    <circle cx="32.5" cy="19" r="2.2" fill="#CBD5E1" stroke="#334155" strokeWidth="0.9" />
+    <circle cx="32.5" cy="23.5" r="2.2" fill="#CBD5E1" stroke="#334155" strokeWidth="0.9" />
+    {/* Elongated Slim Bass Neck */}
+    <rect x="36.5" y="27" width="6" height="68" fill="#E8B87D" stroke="#78350F" strokeWidth="1.1" />
+    {/* Fret markers */}
+    <circle cx="39.5" cy="39" r="0.9" fill="#334155" />
+    <circle cx="39.5" cy="51" r="0.9" fill="#334155" />
+    <circle cx="39.5" cy="63" r="0.9" fill="#334155" />
+    <circle cx="39.5" cy="75" r="0.9" fill="#334155" />
+    {/* Offset Precision/Jazz Bass Body */}
+    <path
+      d="M36.5 92 C32 82, 24 78, 22 86 C20 94, 25 104, 24 112 C22 122, 16 130, 19 142 C22 152, 32 155, 40 155 C48 155, 58 152, 61 142 C64 130, 58 122, 56 112 C55 104, 59 95, 56 90 C53 86, 47 91, 42.5 94 Z"
+      fill="#475569"
+      stroke="#0F172A"
+      strokeWidth="1.5"
+    />
+    {/* White Pickguard */}
+    <path
+      d="M36.5 95 C31 95, 27 104, 28 116 C29 128, 36 138, 49 144 C54 142, 56 134, 54 122 C52 110, 54 98, 51 95 C48 93, 45 96, 42.5 96 Z"
+      fill="#F1F5F9"
+      stroke="#64748B"
+      strokeWidth="0.9"
+    />
+    {/* Split P-Bass Pickup */}
+    <rect x="33" y="114" width="6.5" height="3.8" rx="0.8" fill="#1E293B" />
+    <rect x="40" y="117" width="6.5" height="3.8" rx="0.8" fill="#1E293B" />
+    {/* Bass Bridge */}
+    <rect x="33.5" y="136" width="12" height="5" rx="1" fill="#94A3B8" stroke="#1E293B" strokeWidth="0.9" />
+    {/* 2 Control Knobs */}
+    <circle cx="51" cy="133" r="1.8" fill="#CBD5E1" stroke="#1E293B" strokeWidth="0.8" />
+    <circle cx="49" cy="140" r="1.8" fill="#CBD5E1" stroke="#1E293B" strokeWidth="0.8" />
+    {/* 4 Thick Bass Strings */}
+    <line x1="37.6" y1="11" x2="37.3" y2="136" stroke="#E2E8F0" strokeWidth="0.85" />
+    <line x1="38.9" y1="15" x2="38.8" y2="136" stroke="#E2E8F0" strokeWidth="0.75" />
+    <line x1="40.2" y1="19" x2="40.3" y2="136" stroke="#E2E8F0" strokeWidth="0.65" />
+    <line x1="41.5" y1="23" x2="41.8" y2="136" stroke="#E2E8F0" strokeWidth="0.55" />
+  </svg>
+);
+
+export const ElectricGuitarSvg: React.FC<{ className?: string }> = ({ className = "w-full h-full" }) => (
+  <svg viewBox="0 0 80 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+    {/* Headstock (6 inline tuners on left, scaled proportionally to bass) */}
+    <path
+      d="M36 16 C36 12, 44 12, 45 17 C46 22, 43 29, 43 34 L36 34 Z"
+      fill="#E8B87D"
+      stroke="#78350F"
+      strokeWidth="1.2"
+    />
+    {/* 6 Tuning Pegs */}
+    {[17.5, 20.3, 23.1, 25.9, 28.7, 31.5].map((y, idx) => (
+      <circle key={idx} cx="33.5" cy={y} r="1.4" fill="#CBD5E1" stroke="#334155" strokeWidth="0.8" />
+    ))}
+    {/* 6-String Rosewood Fretboard Neck (slightly shorter scale than bass) */}
+    <rect x="36" y="34" width="7" height="58" fill="#5C3A21" stroke="#3E2723" strokeWidth="1.1" />
+    {/* Fret markers */}
+    <circle cx="39.5" cy="45" r="0.9" fill="#F8FAFC" />
+    <circle cx="39.5" cy="56" r="0.9" fill="#F8FAFC" />
+    <circle cx="39.5" cy="67" r="0.9" fill="#F8FAFC" />
+    <circle cx="39.5" cy="78" r="0.9" fill="#F8FAFC" />
+    {/* Double-Cutaway Electric Guitar Body */}
+    <path
+      d="M36 90 C32 82, 24 81, 23 89 C22 96, 26 104, 25 112 C23 122, 17 130, 20 142 C23 152, 32 155, 40 155 C48 155, 57 152, 60 142 C63 130, 57 122, 55 112 C54 104, 58 95, 56 89 C54 83, 47 86, 43 91 Z"
+      fill="#B91C1C"
+      stroke="#450A0A"
+      strokeWidth="1.5"
+    />
+    {/* Cream Pickguard */}
+    <path
+      d="M36 93 C31 94, 27 103, 28 115 C29 127, 36 137, 49 143 C54 141, 56 133, 54 121 C52 110, 53 97, 50 94 C47 92, 45 94, 43 94 Z"
+      fill="#FFFBEB"
+      stroke="#92400E"
+      strokeWidth="0.9"
+    />
+    {/* 3 Angled Single-Coil / Humbucker Pickups */}
+    <rect x="33.5" y="104" width="12" height="3.2" rx="0.8" fill="#1E293B" />
+    <rect x="33.5" y="114" width="12" height="3.2" rx="0.8" fill="#1E293B" />
+    <rect x="33.5" y="124" width="12" height="3.6" rx="0.8" transform="rotate(-7 39.5 125.8)" fill="#1E293B" />
+    {/* Tremolo Bridge */}
+    <rect x="33.5" y="136" width="12" height="5" rx="1" fill="#CBD5E1" stroke="#1E293B" strokeWidth="0.9" />
+    {/* 3 Control Knobs */}
+    <circle cx="51" cy="128" r="1.5" fill="#F8FAFC" stroke="#1E293B" strokeWidth="0.7" />
+    <circle cx="50" cy="134" r="1.5" fill="#F8FAFC" stroke="#1E293B" strokeWidth="0.7" />
+    <circle cx="48" cy="140" r="1.5" fill="#F8FAFC" stroke="#1E293B" strokeWidth="0.7" />
+    {/* 6 Guitar Strings */}
+    {[37.1, 38.05, 39.0, 39.95, 40.9, 41.85].map((x, idx) => (
+      <line key={idx} x1={x} y1={18 + idx * 2.5} x2={x} y2="136" stroke="#E2E8F0" strokeWidth="0.45" />
+    ))}
+  </svg>
+);
+
+export interface CustomGearIconOption {
+  shape: CustomGearIconShape;
+  label: string;
+  defaultMic: string;
+  defaultStand: "None" | "Short Boom" | "Tall Boom" | "Straight";
+  defaultPhantom: boolean;
+}
+
+export const CUSTOM_GEAR_ICON_OPTIONS: CustomGearIconOption[] = [
+  {
+    shape: "strings_upright",
+    label: "Strings / Upright",
+    defaultMic: "DPA 4099 / Pickup DI",
+    defaultStand: "Short Boom",
+    defaultPhantom: true
+  },
+  {
+    shape: "grand_piano_keys",
+    label: "Grand Piano / Keys",
+    defaultMic: "Stereo Condenser Pair / Stereo DI",
+    defaultStand: "Tall Boom",
+    defaultPhantom: true
+  },
+  {
+    shape: "horns_woodwinds",
+    label: "Horns / Woodwinds",
+    defaultMic: "Sennheiser MD421 / Clip Condenser",
+    defaultStand: "Tall Boom",
+    defaultPhantom: true
+  },
+  {
+    shape: "percussion",
+    label: "Percussion",
+    defaultMic: "Pair SM57 / Condenser OH",
+    defaultStand: "Tall Boom",
+    defaultPhantom: true
+  },
+  {
+    shape: "amp_cabinet",
+    label: "Amp / Cabinet",
+    defaultMic: "Shure SM57 / e906",
+    defaultStand: "Short Boom",
+    defaultPhantom: false
+  },
+  {
+    shape: "mic_di_box",
+    label: "Mic / DI Box",
+    defaultMic: "Radial J48 Active DI",
+    defaultStand: "None",
+    defaultPhantom: true
+  }
+];
+
+export const CustomGearVectorSvg: React.FC<{
+  shape: CustomGearIconShape;
+  className?: string;
+}> = ({ shape, className = "w-full h-full select-none" }) => {
+  switch (shape) {
+    case "strings_upright":
+      return (
+        <svg viewBox="0 0 80 160" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Scroll Headstock */}
+          <path
+            d="M36 9 C36 4, 44 4, 44 9 C45 13, 43 18, 43 22 L37 22 C37 18, 35 13, 36 9 Z"
+            fill="#92400E"
+            stroke="#451A03"
+            strokeWidth="1.2"
+          />
+          <circle cx="34.5" cy="12" r="1.6" fill="#1E293B" />
+          <circle cx="45.5" cy="12" r="1.6" fill="#1E293B" />
+          <circle cx="34.5" cy="17" r="1.6" fill="#1E293B" />
+          <circle cx="45.5" cy="17" r="1.6" fill="#1E293B" />
+          {/* Ebony Fingerboard */}
+          <rect x="37" y="22" width="6" height="72" rx="1" fill="#1E293B" stroke="#0F172A" strokeWidth="1" />
+          {/* Acoustic Carved Body */}
+          <path
+            d="M40 58 C30 58, 22 65, 22 77 C22 86, 28 92, 26 98 C22 104, 15 113, 16 127 C17 142, 27 149, 40 149 C53 149, 63 142, 64 127 C65 113, 58 104, 54 98 C52 92, 58 86, 58 77 C58 65, 50 58, 40 58 Z"
+            fill="#B45309"
+            stroke="#451A03"
+            strokeWidth="1.6"
+          />
+          {/* Inner Purfling Outline */}
+          <path
+            d="M40 62 C32 62, 26 68, 26 77 C26 85, 31 91, 29 98 C25 104, 20 113, 21 126 C22 138, 30 145, 40 145 C50 145, 58 138, 59 126 C60 113, 55 104, 51 98 C49 91, 54 85, 54 77 C54 68, 48 62, 40 62 Z"
+            stroke="#FDE68A"
+            strokeWidth="0.7"
+            opacity="0.6"
+          />
+          {/* F-holes */}
+          <path d="M27 104 C25 110, 29 116, 26 123" stroke="#451A03" strokeWidth="1.8" strokeLinecap="round" />
+          <path d="M53 104 C55 110, 51 116, 54 123" stroke="#451A03" strokeWidth="1.8" strokeLinecap="round" />
+          {/* Maple Bridge & Ebony Tailpiece */}
+          <rect x="31" y="114" width="18" height="3.2" rx="0.8" fill="#FDE68A" stroke="#78350F" strokeWidth="0.8" />
+          <path d="M36 124 L44 124 L42 146 L38 146 Z" fill="#0F172A" />
+          {/* Endpin */}
+          <line x1="40" y1="149" x2="40" y2="157" stroke="#94A3B8" strokeWidth="2.2" strokeLinecap="round" />
+          {/* Fingerboard & 4 Strings */}
+          <rect x="36.5" y="22" width="7" height="70" rx="1" fill="#1E293B" />
+          {[37.6, 39.2, 40.8, 42.4].map((x, idx) => (
+            <line key={idx} x1={x} y1="14" x2={x} y2="124" stroke="#E2E8F0" strokeWidth="0.65" />
+          ))}
+        </svg>
+      );
+
+    case "grand_piano_keys":
+      return (
+        <svg viewBox="0 0 130 115" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Grand Piano Curved Case */}
+          <path
+            d="M22 14 C52 8, 92 14, 108 32 C122 48, 114 70, 96 76 C84 80, 78 90, 74 96 L22 96 Z"
+            fill="#0F172A"
+            stroke="#334155"
+            strokeWidth="2.5"
+          />
+          {/* Cast-Iron Golden Soundboard & Strings */}
+          <path
+            d="M30 22 C54 18, 86 22, 100 37 C110 49, 103 66, 89 70 C78 73, 73 80, 69 86 L30 86 Z"
+            fill="#CA8A04"
+            stroke="#713F12"
+            strokeWidth="1.2"
+          />
+          {[36, 44, 52, 60, 68].map((y, idx) => (
+            <line
+              key={idx}
+              x1="32"
+              y1={y}
+              x2={98 - idx * 6}
+              y2={y - 6}
+              stroke="#FEF08A"
+              strokeWidth="0.9"
+              opacity="0.85"
+            />
+          ))}
+          {/* 88-Key Fallboard & Keybed */}
+          <rect x="18" y="88" width="60" height="18" rx="2" fill="#F8FAFC" stroke="#0F172A" strokeWidth="2" />
+          <rect x="18" y="84" width="60" height="5" fill="#1E293B" />
+          {[22, 27, 34, 39, 44, 51, 56, 63, 68, 73].map((x) => (
+            <rect key={x} x={x} y="89" width="3" height="9" fill="#0F172A" />
+          ))}
+          {/* Lid Prop Rod */}
+          <line x1="92" y1="68" x2="112" y2="82" stroke="#94A3B8" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+
+    case "horns_woodwinds":
+      return (
+        <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Brass Lead Pipe & Tuning Loop */}
+          <rect x="20" y="34" width="46" height="5" rx="2.5" fill="#F59E0B" stroke="#92400E" strokeWidth="1.2" />
+          <path
+            d="M32 39 L32 58 C32 63, 36 66, 42 66 L54 66 C60 66, 63 63, 63 57 L63 40"
+            stroke="#D97706"
+            strokeWidth="4.5"
+            strokeLinecap="round"
+          />
+          {/* Flared Brass Bell */}
+          <path
+            d="M64 34 C74 34, 83 25, 88 18 L88 56 C83 49, 74 40, 64 40 Z"
+            fill="#FBBF24"
+            stroke="#78350F"
+            strokeWidth="1.5"
+          />
+          <ellipse cx="88" cy="37" rx="3" ry="19" fill="#92400E" stroke="#FDE68A" strokeWidth="1" />
+          {/* 3 Piston Valve Casings */}
+          <rect x="41" y="25" width="4.5" height="32" rx="1.5" fill="#FDE68A" stroke="#78350F" strokeWidth="1" />
+          <rect x="48" y="25" width="4.5" height="32" rx="1.5" fill="#FDE68A" stroke="#78350F" strokeWidth="1" />
+          <rect x="55" y="25" width="4.5" height="32" rx="1.5" fill="#FDE68A" stroke="#78350F" strokeWidth="1" />
+          {/* Pearl Finger Buttons */}
+          <circle cx="43.25" cy="23.5" r="2.2" fill="#F8FAFC" stroke="#78350F" strokeWidth="0.9" />
+          <circle cx="50.25" cy="23.5" r="2.2" fill="#F8FAFC" stroke="#78350F" strokeWidth="0.9" />
+          <circle cx="57.25" cy="23.5" r="2.2" fill="#F8FAFC" stroke="#78350F" strokeWidth="0.9" />
+          {/* Mouthpiece */}
+          <path d="M12 33 L20 35 L20 38 L12 40 Z" fill="#E2E8F0" stroke="#475569" strokeWidth="1" />
+        </svg>
+      );
+
+    case "percussion":
+      return (
+        <svg viewBox="0 0 110 100" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Left Conga Drum */}
+          <circle cx="34" cy="54" r="24" fill="#9A3412" stroke="#431407" strokeWidth="2.5" />
+          <circle cx="34" cy="54" r="20" fill="#F5EBDC" stroke="#CBD5E1" strokeWidth="2.5" />
+          <circle cx="34" cy="54" r="14" stroke="#D6C4AA" strokeWidth="0.9" strokeDasharray="3 3" />
+          {/* Right Quinto / Tumba Conga */}
+          <circle cx="76" cy="54" r="22" fill="#B45309" stroke="#451A03" strokeWidth="2.5" />
+          <circle cx="76" cy="54" r="18" fill="#F5EBDC" stroke="#CBD5E1" strokeWidth="2.5" />
+          <circle cx="76" cy="54" r="12" stroke="#D6C4AA" strokeWidth="0.9" strokeDasharray="3 3" />
+          {/* Center Hardware Stand & Cowbell */}
+          <rect x="49" y="16" width="12" height="18" rx="1.5" fill="#1E293B" stroke="#64748B" strokeWidth="1.5" />
+          <line x1="55" y1="34" x2="55" y2="54" stroke="#94A3B8" strokeWidth="2.5" />
+          <circle cx="55" cy="54" r="4" fill="#CBD5E1" stroke="#334155" strokeWidth="1.2" />
+        </svg>
+      );
+
+    case "amp_cabinet":
+      return (
+        <svg viewBox="0 0 100 95" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Outer Tweed / Tolex Cabinet */}
+          <rect x="12" y="14" width="76" height="68" rx="6" fill="#27272A" stroke="#09090B" strokeWidth="2.5" />
+          {/* Top Leather Handle */}
+          <rect x="38" y="9" width="24" height="5" rx="2" fill="#78350F" stroke="#18181B" strokeWidth="1" />
+          {/* Control Faceplate */}
+          <rect x="18" y="18" width="64" height="11" rx="2" fill="#E2E8F0" stroke="#64748B" strokeWidth="1" />
+          {[25, 34, 43, 52, 61, 70].map((cx, i) => (
+            <circle key={i} cx={cx} cy="23.5" r="2.2" fill={i === 0 ? "#DC2626" : "#0F172A"} />
+          ))}
+          {/* Grille Cloth & Speaker Cone */}
+          <rect x="18" y="33" width="64" height="43" rx="3" fill="#3F3F46" stroke="#71717A" strokeWidth="1" />
+          <circle cx="50" cy="54.5" r="16" fill="#18181B" stroke="#71717A" strokeWidth="1.5" />
+          <circle cx="50" cy="54.5" r="5.5" fill="#52525B" />
+        </svg>
+      );
+
+    case "mic_di_box":
+    default:
+      return (
+        <svg viewBox="0 0 95 95" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
+          {/* Heavy Anodized DI Chassis */}
+          <rect x="16" y="42" width="63" height="36" rx="5" fill="#1E293B" stroke="#0F172A" strokeWidth="2.5" />
+          {/* Label Plate */}
+          <rect x="24" y="49" width="47" height="13" rx="2" fill="#38BDF8" />
+          <text x="47.5" y="58.5" fontSize="8" fontWeight="900" fill="#0F172A" textAnchor="middle">DIRECT / MIC</text>
+          {/* Pad & Lift Switches */}
+          <rect x="27" y="67" width="12" height="5" rx="1" fill="#EF4444" />
+          <circle cx="54" cy="69.5" r="3" fill="#CBD5E1" />
+          <circle cx="66" cy="69.5" r="3" fill="#CBD5E1" />
+          {/* Articulated Condenser Mic */}
+          <line x1="47.5" y1="26" x2="47.5" y2="42" stroke="#64748B" strokeWidth="3" />
+          <rect x="40" y="10" width="15" height="20" rx="7" fill="#CBD5E1" stroke="#334155" strokeWidth="1.6" />
+          <line x1="42" y1="18" x2="53" y2="18" stroke="#475569" strokeWidth="1.2" />
+        </svg>
+      );
+  }
+};
+
 export const StageGearGraphic: React.FC<IconProps> = ({
   type,
   label,
@@ -29,12 +359,17 @@ export const StageGearGraphic: React.FC<IconProps> = ({
   isSelected = false,
   mixNumber = 1,
   theme = "print",
-  kickType = "single"
+  kickType = "single",
+  customSvg,
+  customIcon
 }) => {
   const isPrint = theme === "print";
 
   const renderSvg = () => {
+    if (customSvg) return customSvg;
     switch (type) {
+      case "custom_gear":
+        return <CustomGearVectorSvg shape={customIcon || "strings_upright"} />;
       case "drum_kit": {
         const isDualKick = kickType === "dual";
         return (
@@ -468,108 +803,10 @@ export const StageGearGraphic: React.FC<IconProps> = ({
         );
 
       case "electric_guitar":
-        return (
-          <svg viewBox="0 0 100 120" className="w-full h-full select-none" fill="none">
-            <defs>
-              <linearGradient id="strat-burst" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#18181b" />
-                <stop offset="35%" stopColor="#7c2d12" />
-                <stop offset="70%" stopColor="#ea580c" />
-                <stop offset="100%" stopColor="#fde047" />
-              </linearGradient>
-            </defs>
-            {/* Guitar Stand Tripod */}
-            <line x1="50" y1="20" x2="50" y2="95" stroke="#64748b" strokeWidth="2.5" />
-            <line x1="28" y1="105" x2="50" y2="95" stroke="#64748b" strokeWidth="2.5" />
-            <line x1="72" y1="105" x2="50" y2="95" stroke="#64748b" strokeWidth="2.5" />
-
-            {/* Electric Guitar Body (Stratocaster Double Cutaway) */}
-            {/* Lower Bout & Waist */}
-            <path
-              d="M 32 75 C 28 65 30 52 42 50 C 44 44 42 36 38 32 C 44 32 50 36 52 42 C 54 36 60 32 66 32 C 62 36 60 44 62 50 C 74 52 76 65 72 75 C 68 88 36 88 32 75 Z"
-              fill="url(#strat-burst)"
-              stroke="#0f172a"
-              strokeWidth="2.5"
-            />
-            {/* White Pickguard */}
-            <path
-              d="M 38 72 C 36 62 38 54 45 52 C 47 48 46 42 44 38 C 48 40 52 44 54 48 C 58 48 64 52 64 60 C 64 70 54 75 48 75 Z"
-              fill="#ffffff"
-              stroke="#cbd5e1"
-              strokeWidth="1"
-            />
-            {/* Pickups (3 Single Coils) */}
-            <rect x="46" y="52" width="12" height="3" rx="1" fill="#0f172a" />
-            <rect x="46" y="58" width="12" height="3" rx="1" fill="#0f172a" />
-            <rect x="46" y="64" width="12" height="3" rx="1" fill="#0f172a" />
-            {/* Chrome Tremolo Bridge */}
-            <rect x="47" y="70" width="10" height="5" rx="1" fill="#cbd5e1" stroke="#475569" strokeWidth="0.8" />
-            {/* Volume / Tone Knobs */}
-            <circle cx="58" cy="67" r="1.5" fill="#f8fafc" stroke="#64748b" strokeWidth="0.5" />
-            <circle cx="60" cy="71" r="1.5" fill="#f8fafc" stroke="#64748b" strokeWidth="0.5" />
-
-            {/* Guitar Neck & Frets */}
-            <rect x="48" y="16" width="6" height="28" fill="#fde047" stroke="#713f12" strokeWidth="0.8" />
-            {Array.from({ length: 7 }).map((_, i) => (
-              <line key={i} x1="48" y1={18 + i * 3.6} x2="54" y2={18 + i * 3.6} stroke="#a16207" strokeWidth="0.8" />
-            ))}
-            {/* Headstock with 6 Inline Tuners */}
-            <path d="M 48 16 L 46 8 L 52 6 L 54 16 Z" fill="#fde047" stroke="#713f12" strokeWidth="1" />
-            <circle cx="45" cy="8" r="1" fill="#cbd5e1" />
-            <circle cx="45" cy="10" r="1" fill="#cbd5e1" />
-            <circle cx="45" cy="12" r="1" fill="#cbd5e1" />
-          </svg>
-        );
+        return <ElectricGuitarSvg className="w-7 h-12 shrink-0 select-none" />;
 
       case "bass_guitar":
-        return (
-          <svg viewBox="0 0 100 120" className="w-full h-full select-none" fill="none">
-            <defs>
-              <linearGradient id="bass-red" x1="0" y1="0" x2="1" y2="1">
-                <stop offset="0%" stopColor="#450a0a" />
-                <stop offset="40%" stopColor="#991b1b" />
-                <stop offset="80%" stopColor="#dc2626" />
-                <stop offset="100%" stopColor="#f87171" />
-              </linearGradient>
-            </defs>
-            {/* Stand */}
-            <line x1="50" y1="16" x2="50" y2="98" stroke="#64748b" strokeWidth="2.5" />
-            <line x1="26" y1="108" x2="50" y2="98" stroke="#64748b" strokeWidth="2.5" />
-            <line x1="74" y1="108" x2="50" y2="98" stroke="#64748b" strokeWidth="2.5" />
-
-            {/* Precision Bass Solid Body */}
-            <path
-              d="M 30 76 C 26 64 28 50 40 48 C 42 40 40 30 36 26 C 42 26 48 32 50 40 C 53 34 58 30 64 30 C 60 36 58 42 60 48 C 74 50 76 64 72 76 C 68 90 34 90 30 76 Z"
-              fill="url(#bass-red)"
-              stroke="#0f172a"
-              strokeWidth="2.5"
-            />
-            {/* White/Tortoise Shell Pickguard */}
-            <path
-              d="M 36 72 C 34 60 36 52 44 50 C 46 44 44 38 42 34 C 47 36 50 42 52 46 C 58 46 64 50 64 60 C 64 72 52 76 46 76 Z"
-              fill="#ffffff"
-              stroke="#cbd5e1"
-              strokeWidth="1"
-            />
-            {/* Split P-Bass Pickups */}
-            <rect x="46" y="54" width="7" height="4" rx="1" fill="#0f172a" stroke="#ffffff" strokeWidth="0.5" />
-            <rect x="51" y="59" width="7" height="4" rx="1" fill="#0f172a" stroke="#ffffff" strokeWidth="0.5" />
-            {/* Heavy Chrome Bass Bridge */}
-            <rect x="46" y="70" width="12" height="6" rx="1" fill="#cbd5e1" stroke="#475569" strokeWidth="1" />
-
-            {/* Long Scale 4-String Bass Neck */}
-            <rect x="47" y="14" width="7" height="34" fill="#78350f" stroke="#451a03" strokeWidth="0.8" />
-            {Array.from({ length: 8 }).map((_, i) => (
-              <line key={i} x1="47" y1={16 + i * 4} x2="54" y2={16 + i * 4} stroke="#fde68a" strokeWidth="0.8" />
-            ))}
-            {/* 4 In-Line Large Clover Leaf Tuners */}
-            <path d="M 47 14 L 45 4 L 52 2 L 54 14 Z" fill="#78350f" stroke="#451a03" strokeWidth="1" />
-            <circle cx="43" cy="4" r="1.5" fill="#cbd5e1" />
-            <circle cx="43" cy="7" r="1.5" fill="#cbd5e1" />
-            <circle cx="43" cy="10" r="1.5" fill="#cbd5e1" />
-            <circle cx="43" cy="13" r="1.5" fill="#cbd5e1" />
-          </svg>
-        );
+        return <BassGuitarSvg className="w-7 h-12 shrink-0 select-none" />;
 
       case "acoustic_guitar":
         return (

@@ -1075,7 +1075,7 @@ export default function Home({
                 id="hero-btn-browse-bands"
               >
                 <Users className="w-4 h-4 text-amber-400" />
-                <span>Browse Active Bands ($9.99)</span>
+                <span>Browse Active Bands</span>
               </button>
             </div>
 

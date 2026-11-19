@@ -11,6 +11,7 @@
  */
 
 import { TOUR_ARTICLES } from "../data/tourArticles";
+import { WEEKLY_BLOG_POSTS } from "../data/weeklyBlogPosts";
 
 export interface SitemapEntry {
   url: string;
@@ -92,6 +93,22 @@ export function getCoreSitemapEntries(): SitemapEntry[] {
       url: `https://www.giglizard.us/articles/${article.slug}`,
       lastmod: article.updatedDate || today,
       changefreq: "monthly",
+      priority: "0.85"
+    });
+  });
+
+  entries.push({
+    url: "https://www.giglizard.us/blog",
+    lastmod: today,
+    changefreq: "weekly",
+    priority: "0.90"
+  });
+
+  WEEKLY_BLOG_POSTS.forEach(post => {
+    entries.push({
+      url: `https://www.giglizard.us/blog/${post.slug}`,
+      lastmod: post.updated || post.published || today,
+      changefreq: "weekly",
       priority: "0.85"
     });
   });

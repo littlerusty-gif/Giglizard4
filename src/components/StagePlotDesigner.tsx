@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from "react";
-import { StageElement, EquipmentType, InputChannel, BandProfile, UserAccount } from "../types";
+import { StageElement, EquipmentType, InputChannel, BandProfile, UserAccount, CustomGearIconShape } from "../types";
 import { 
   Plus, Trash2, RotateCw, Type, Save, FolderOpen, 
   HelpCircle, Trash, Sliders, Sparkles, AlertCircle, RefreshCw,
@@ -17,7 +17,8 @@ import {
   updateBandStagePlotUrl 
 } from "../lib/supabase";
 import StagePlotSeoGuide from "./StagePlotSeoGuide";
-import { StageGearGraphic } from "./StagePlotIcons";
+import { StageGearGraphic, BassGuitarSvg, ElectricGuitarSvg, CustomGearVectorSvg, CUSTOM_GEAR_ICON_OPTIONS } from "./StagePlotIcons";
+export { BassGuitarSvg, ElectricGuitarSvg, CustomGearVectorSvg };
 
 interface StagePlotDesignerProps {
   elements: StageElement[];
@@ -71,42 +72,42 @@ const TOOLBOX_TEMPLATES: ToolboxItem[] = [
 /**
  * Standard Professional Live Band Stage Plot Preset
  * Recreates the exact clean, logical touring stage layout:
- * - Upstage Center: Drum kit on riser with SPD pad, drum wedge OUT 5, wired in-ear
- * - Upstage Right (House Left): Saxophone, Keyboards, 2 DI boxes, keyboard wedge OUT 4
- * - Downstage Right (House Left): Electric guitar, vocal boom mic, wedge OUT 1
- * - Downstage Center: Center vocal boom mic, wireless in-ear, dual floor wedges OUT 2
- * - Downstage Left (House Right): Bass guitar, bass DI box, wedge OUT 3
+ * - Upstage Center: Drum kit on riser with SPD pad, drum wedge OUT 4, wired in-ear
+ * - Upstage Right (House Left): Saxophone, Keyboards, 2 DI boxes, keyboard wedge OUT 5
+ * - Downstage Right (House Left): Electric guitar, vocal boom mic, wedge OUT 1 (Stage Right)
+ * - Downstage Center: Center vocal boom mic, wireless in-ear, dual floor wedges OUT 2 (Center Downstage / Lead Mix)
+ * - Downstage Left (House Right): Bass guitar, bass DI box, wedge OUT 3 (Stage Left)
  * - Upstage Left (House Right): Laptop playback rig, bass amp
  */
 export const PRESET_PROFESSIONAL_LIVE_BAND: StageElement[] = [
   // Upstage Center: Drums on Riser
   { id: "drums-kit", type: "drum_kit", label: "Drums & Riser", x: 50, y: 22, rotation: 0 },
   { id: "drum-pad", type: "drum_pad", label: "SPD Sample Pad", x: 39, y: 17, rotation: 0 },
-  { id: "mon-drum", type: "monitor_wedge", label: "Drum Mix", x: 63, y: 18, rotation: 0, mixNumber: 5 },
+  { id: "mon-drum", type: "monitor_wedge", label: "Drum Mix", x: 63, y: 18, rotation: 0, mixNumber: 4 },
   { id: "iem-drum", type: "wired_iem", label: "Wired In-Ear", x: 71, y: 19, rotation: 0 },
 
-  // Upstage Stage Right (Audience Left): Keys, Sax, DI & Out 4
+  // Upstage Stage Right (Audience Left): Keys, Sax, DI & Out 5
   { id: "sax-horns", type: "saxophone", label: "Saxophone", x: 31, y: 18, rotation: 0 },
   { id: "keys-rig", type: "keyboard_rig", label: "Keyboards", x: 18, y: 25, rotation: 0 },
   { id: "keys-di-1", type: "di_box", label: "Keys DI L", x: 28, y: 24, rotation: 0 },
   { id: "keys-di-2", type: "di_box", label: "Keys DI R", x: 28, y: 31, rotation: 0 },
-  { id: "mon-keys", type: "monitor_wedge", label: "Keys Mix", x: 10, y: 18, rotation: 0, mixNumber: 4 },
+  { id: "mon-keys", type: "monitor_wedge", label: "Keys Mix", x: 10, y: 18, rotation: 0, mixNumber: 5 },
   { id: "keys-amp", type: "guitar_amp", label: "Side Fill", x: 7, y: 29, rotation: 0 },
 
   // Downstage Stage Right (Audience Left): Electric Guitar, Vox SR & Out 1
   { id: "gtr-elec", type: "electric_guitar", label: "Electric Guitar", x: 16, y: 62, rotation: 0 },
   { id: "vox-sr", type: "vocal_mic", label: "Vocal SR", x: 24, y: 64, rotation: 0 },
-  { id: "mon-gtr", type: "monitor_wedge", label: "Guitar Mix", x: 17, y: 79, rotation: 0, mixNumber: 1 },
+  { id: "mon-gtr", type: "monitor_wedge", label: "Stage Right Mix (Guitar)", x: 17, y: 79, rotation: 0, mixNumber: 1 },
 
   // Downstage Center: Lead Vox, Wireless IEM, Dual Center Wedges (Out 2)
   { id: "lead-vox", type: "vocal_mic", label: "Lead Vocal", x: 48, y: 63, rotation: 0 },
   { id: "iem-lead", type: "iem_transmitter", label: "Wireless In-Ear", x: 56, y: 60, rotation: 0 },
-  { id: "mon-center", type: "dual_wedge", label: "Lead Mix Dual", x: 48, y: 79, rotation: 0, mixNumber: 2 },
+  { id: "mon-center", type: "dual_wedge", label: "Center Downstage / Lead Mix", x: 48, y: 79, rotation: 0, mixNumber: 2 },
 
   // Downstage Stage Left (Audience Right): Bass Guitar, Bass DI & Out 3
   { id: "bass-gtr", type: "bass_guitar", label: "Bass Guitar", x: 84, y: 62, rotation: 0 },
   { id: "bass-di", type: "di_box", label: "Bass DI", x: 76, y: 74, rotation: 0 },
-  { id: "mon-bass", type: "monitor_wedge", label: "Bass Mix", x: 85, y: 79, rotation: 0, mixNumber: 3 },
+  { id: "mon-bass", type: "monitor_wedge", label: "Stage Left Mix (Bass)", x: 85, y: 79, rotation: 0, mixNumber: 3 },
 
   // Upstage Stage Left (Audience Right): Laptop Playback Rig & Bass Cab
   { id: "laptop-rig", type: "laptop_rig", label: "Laptop / Tracks", x: 91, y: 17, rotation: 0 },
@@ -118,12 +119,12 @@ export const PRESET_ROCK_4PIECE: StageElement[] = [
   { id: "mon-drum", type: "monitor_wedge", label: "Drum Mix", x: 63, y: 19, rotation: 0, mixNumber: 4 },
   { id: "gtr-amp", type: "guitar_amp", label: "Guitar Amp", x: 17, y: 28, rotation: 0 },
   { id: "gtr-elec", type: "electric_guitar", label: "Guitar", x: 20, y: 62, rotation: 0 },
-  { id: "mon-gtr", type: "monitor_wedge", label: "Guitar Mix", x: 20, y: 79, rotation: 0, mixNumber: 2 },
+  { id: "mon-gtr", type: "monitor_wedge", label: "Stage Right Mix (Guitar)", x: 20, y: 79, rotation: 0, mixNumber: 1 },
   { id: "lead-vox", type: "vocal_mic", label: "Lead Vox", x: 50, y: 63, rotation: 0 },
-  { id: "mon-vox", type: "monitor_wedge", label: "Lead Mix", x: 50, y: 79, rotation: 0, mixNumber: 1 },
+  { id: "mon-vox", type: "monitor_wedge", label: "Center Downstage / Lead Mix", x: 50, y: 79, rotation: 0, mixNumber: 2 },
   { id: "bass-amp", type: "bass_amp", label: "Bass Amp", x: 83, y: 28, rotation: 0 },
   { id: "bass-gtr", type: "bass_guitar", label: "Bass", x: 80, y: 62, rotation: 0 },
-  { id: "mon-bass", type: "monitor_wedge", label: "Bass Mix", x: 80, y: 79, rotation: 0, mixNumber: 3 }
+  { id: "mon-bass", type: "monitor_wedge", label: "Stage Left Mix (Bass)", x: 80, y: 79, rotation: 0, mixNumber: 3 }
 ];
 
 export const DEFAULT_ROCK_INPUT_CHANNELS: InputChannel[] = [
@@ -215,6 +216,15 @@ export default function StagePlotDesigner({
   // Default to print theme (Studio White) for crystal-clear readability
   const [stageTheme, setStageTheme] = useState<"blueprint" | "stage" | "print">("print");
   const [activeToolboxTab, setActiveToolboxTab] = useState<"all" | "backline" | "mics" | "monitoring">("all");
+
+  // Custom Instrument / Gear Quick Add Modal state
+  const [showCustomGearModal, setShowCustomGearModal] = useState(false);
+  const [customGearName, setCustomGearName] = useState("");
+  const [customGearShape, setCustomGearShape] = useState<CustomGearIconShape>("strings_upright");
+  const [customGearMic, setCustomGearMic] = useState("");
+  const [autoAddCustomToPatch, setAutoAddCustomToPatch] = useState(true);
+  const [customGearError, setCustomGearError] = useState<string | null>(null);
+  const customNameInputRef = useRef<HTMLInputElement>(null);
   
   // Channel Input List state - defaults to 4-piece rock band
   const [inputChannels, setInputChannels] = useState<InputChannel[]>(DEFAULT_ROCK_INPUT_CHANNELS);
@@ -301,6 +311,11 @@ export default function StagePlotDesigner({
   // Close modals on Android back-button
   useEffect(() => {
     const handleBackButton = (e: Event) => {
+      if (showCustomGearModal) {
+        setShowCustomGearModal(false);
+        e.preventDefault();
+        return;
+      }
       if (showExportModal) {
         setShowExportModal(false);
         e.preventDefault();
@@ -320,7 +335,7 @@ export default function StagePlotDesigner({
     return () => {
       window.removeEventListener("giglizard_back_press", handleBackButton);
     };
-  }, [showExportModal, selectedId, publicBandId, onClearPublicView]);
+  }, [showCustomGearModal, showExportModal, selectedId, publicBandId, onClearPublicView]);
 
   const triggerToast = (message: string, type: "success" | "error" | "info" = "success") => {
     setSaveToast({ show: true, message, type });
@@ -337,10 +352,20 @@ export default function StagePlotDesigner({
     }
   }, []);
 
-  // Click & Delete: Listen for Delete/Backspace keys to remove selected item
+  // Click & Delete: Listen for Delete/Backspace keys to remove selected item, and Escape to close modals
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedId) return;
+      if (e.key === "Escape") {
+        if (showCustomGearModal) {
+          setShowCustomGearModal(false);
+          return;
+        }
+        if (showExportModal) {
+          setShowExportModal(false);
+          return;
+        }
+      }
+      if (showCustomGearModal || showExportModal || !selectedId) return;
       const targetTag = (e.target as HTMLElement)?.tagName?.toLowerCase();
       if (targetTag === "input" || targetTag === "textarea") return;
 
@@ -352,7 +377,7 @@ export default function StagePlotDesigner({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedId, elements]);
+  }, [selectedId, elements, showCustomGearModal, showExportModal]);
 
   // Toggle drum kit between single kick and dual kick
   const handleToggleKickType = (id: string, kickType: "single" | "dual") => {
@@ -515,6 +540,69 @@ export default function StagePlotDesigner({
     }
 
     triggerToast(`Added ${template.label} to stage. Drag to place.`, "info");
+  };
+
+  const handleOpenCustomGearModal = () => {
+    setCustomGearError(null);
+    setShowCustomGearModal(true);
+    setTimeout(() => {
+      customNameInputRef.current?.focus();
+    }, 40);
+  };
+
+  const handleCreateCustomGear = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmedName = customGearName.trim();
+    if (!trimmedName) {
+      setCustomGearError("Please enter an instrument or gear name.");
+      customNameInputRef.current?.focus();
+      return;
+    }
+
+    const shapeOption = CUSTOM_GEAR_ICON_OPTIONS.find(o => o.shape === customGearShape) || CUSTOM_GEAR_ICON_OPTIONS[0];
+    const resolvedMic = customGearMic.trim() || shapeOption.defaultMic;
+    const spawnOffset = (elements.length % 5) * 4;
+
+    const newEl: StageElement = {
+      id: `custom_gear-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      type: "custom_gear",
+      label: trimmedName,
+      x: Math.min(80, Math.max(20, 50 + spawnOffset - 8)),
+      y: Math.min(80, Math.max(20, 48 + spawnOffset - 6)),
+      rotation: 0,
+      customIcon: customGearShape,
+      micOrDi: resolvedMic
+    };
+
+    onUpdateElements([...elements, newEl]);
+    setSelectedId(newEl.id);
+
+    let addedChannelNum: number | null = null;
+    if (autoAddCustomToPatch) {
+      const nextCh = inputChannels.length > 0 ? Math.max(...inputChannels.map(c => c.channel)) + 1 : 1;
+      addedChannelNum = nextCh;
+      const newRow: InputChannel = {
+        channel: nextCh,
+        instrument: trimmedName.toUpperCase(),
+        micOrDi: resolvedMic,
+        stand: shapeOption.defaultStand,
+        phantomPower: shapeOption.defaultPhantom,
+        notes: customGearMic.trim() ? `Custom input (${shapeOption.label})` : `${shapeOption.label} stage input`
+      };
+      setInputChannels(prev => [...prev, newRow]);
+    }
+
+    setShowCustomGearModal(false);
+    setCustomGearName("");
+    setCustomGearMic("");
+    setCustomGearError(null);
+
+    triggerToast(
+      addedChannelNum
+        ? `Added "${trimmedName}" to stage & Patch List Ch. ${addedChannelNum}.`
+        : `Added "${trimmedName}" to stage. Drag to place.`,
+      "success"
+    );
   };
 
   // Remove element
@@ -813,7 +901,22 @@ export default function StagePlotDesigner({
   const selectedElement = useMemo(() => elements.find(el => el.id === selectedId), [elements, selectedId]);
 
   // Sizing helper for instruments and monitors on canvas
-  const getElementSizeClasses = (type: EquipmentType) => {
+  const getElementSizeClasses = (type: EquipmentType, customIcon?: CustomGearIconShape) => {
+    if (type === "custom_gear") {
+      switch (customIcon) {
+        case "grand_piano_keys":
+          return "w-28 h-24 sm:w-32 sm:h-28 -ml-14 -mt-12 sm:-ml-16 sm:-mt-14";
+        case "strings_upright":
+          return "w-18 h-24 sm:w-22 sm:h-28 -ml-9 -mt-12 sm:-ml-11 sm:-mt-14";
+        case "percussion":
+        case "amp_cabinet":
+          return "w-20 h-20 sm:w-24 sm:h-24 -ml-10 -mt-10 sm:-ml-12 sm:-mt-12";
+        case "horns_woodwinds":
+        case "mic_di_box":
+        default:
+          return "w-18 h-18 sm:w-22 sm:h-22 -ml-9 -mt-9 sm:-ml-11 sm:-mt-11";
+      }
+    }
     switch (type) {
       case "drum_kit":
         return "w-32 h-32 sm:w-44 sm:h-44 -ml-16 -mt-16 sm:-ml-22 sm:-mt-22";
@@ -930,129 +1033,12 @@ export default function StagePlotDesigner({
         </div>
       </div>
 
-      {/* Main Designer Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6" id="stage-designer-panel">
-        
-        {/* Left Column: Gear Toolbox & Presets */}
-        <div className="lg:col-span-1 bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 space-y-4 shadow-xs" id="plot-toolbox">
-          <div>
-            <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center justify-between">
-              <span>Stage Gear Library</span>
-              <span className="text-[10px] font-normal text-slate-400">Click to place</span>
-            </h3>
-            <p className="text-[11px] text-slate-500 mt-1">
-              Add instruments, vocal mics, and floor wedges to your stage setup.
-            </p>
-          </div>
+      {/* Main Designer Workspace: Stage Canvas on top, Stage Gear Library directly below, followed by Patch Sheet */}
+      <div className="space-y-6" id="stage-designer-panel">
 
-          {/* Categorized Filter Tabs */}
-          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold">
-            <button
-              type="button"
-              onClick={() => setActiveToolboxTab("all")}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                activeToolboxTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              All
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveToolboxTab("backline")}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                activeToolboxTab === "backline" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Instruments
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveToolboxTab("monitoring")}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                activeToolboxTab === "monitoring" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Monitors
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveToolboxTab("mics")}
-              className={`flex-1 py-1 rounded-lg transition-colors cursor-pointer text-center ${
-                activeToolboxTab === "mics" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
-              }`}
-            >
-              Mics/DI
-            </button>
-          </div>
-
-          {/* Gear Palette Items */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-2 max-h-[440px] overflow-y-auto pr-1" id="toolbox-items-list">
-            {TOOLBOX_TEMPLATES.filter(tmpl => activeToolboxTab === "all" || tmpl.category === activeToolboxTab).map((tmpl) => (
-              <button
-                key={`${tmpl.type}-${tmpl.label}`}
-                type="button"
-                id={`btn-toolbox-${tmpl.type}-${tmpl.kickType || "default"}`}
-                onClick={() => handleAddTemplateToStage(tmpl)}
-                className="w-full flex items-center justify-between text-left p-2 rounded-xl border border-slate-200/90 hover:border-indigo-400 hover:bg-indigo-50/30 text-xs font-bold text-slate-800 group transition-all cursor-pointer shadow-2xs"
-              >
-                <div className="flex items-center gap-2.5 truncate">
-                  <div className="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center p-0.5 shrink-0 border border-slate-200 group-hover:border-indigo-300">
-                    <StageGearGraphic type={tmpl.type} label="" theme="print" mixNumber={tmpl.defaultMix || 1} kickType={tmpl.kickType} />
-                  </div>
-                  <div className="truncate">
-                    <div className="truncate text-xs text-slate-900">{tmpl.label}</div>
-                    <div className="text-[10px] font-normal text-slate-400 truncate">{tmpl.defaultMic}</div>
-                  </div>
-                </div>
-                <Plus className="w-3.5 h-3.5 shrink-0 text-slate-400 group-hover:text-indigo-600 group-hover:scale-110 transition-transform" />
-              </button>
-            ))}
-          </div>
-
-          <hr className="border-slate-100" />
-
-          {/* Band Layout Presets */}
-          <div className="space-y-2">
-            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Stage Layout Presets
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => handleLoadPreset("standard")}
-                className="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/70 text-indigo-900 text-left transition-all cursor-pointer flex items-center justify-between"
-              >
-                <span>⭐ Clean Rider Standard (Reference)</span>
-                <ChevronRight className="w-3.5 h-3.5 text-indigo-600" />
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLoadPreset("rock")}
-                className="p-2 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-slate-700 text-left transition-all cursor-pointer"
-              >
-                🎸 4-Piece Rock Band
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLoadPreset("acoustic")}
-                className="p-2 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-slate-700 text-left transition-all cursor-pointer"
-              >
-                🪕 Acoustic Trio / Folk
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLoadPreset("clear")}
-                className="p-2 rounded-xl border border-rose-100 hover:border-rose-300 hover:bg-rose-50 text-rose-600 text-left transition-all cursor-pointer"
-              >
-                🗑️ Clear Stage
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Center / Right Column: Canvas + Patch + Notes */}
+        {/* Top Section: Interactive Stage Canvas / Diagram */}
         <div 
-          className="lg:col-span-3 space-y-5" 
+          className="space-y-4" 
           id="stage-workspace"
           onMouseMove={handleMouseMove}
           onTouchMove={handleTouchMove}
@@ -1189,7 +1175,7 @@ export default function StagePlotDesigner({
               const isEditingThis = editingId === el.id;
               const isDraggingThis = activeDragId === el.id;
               const isSelectedThis = selectedId === el.id;
-              const sizeClasses = getElementSizeClasses(el.type);
+              const sizeClasses = getElementSizeClasses(el.type, el.customIcon);
 
               return (
                 <div
@@ -1228,6 +1214,14 @@ export default function StagePlotDesigner({
                       mixNumber={el.mixNumber}
                       theme={stageTheme}
                       kickType={el.kickType}
+                      customIcon={el.customIcon}
+                      customSvg={
+                        el.type === "bass_guitar" ? (
+                          <BassGuitarSvg className="w-7 h-12 shrink-0 select-none" />
+                        ) : el.type === "electric_guitar" ? (
+                          <ElectricGuitarSvg className="w-7 h-12 shrink-0 select-none" />
+                        ) : undefined
+                      }
                     />
 
                     {/* Floating Click-and-Delete Button on Selected Element */}
@@ -1442,8 +1436,165 @@ export default function StagePlotDesigner({
               </div>
             </div>
           )}
+        </div>
 
-          {/* Clean Channel Patch List & Monitor Specs Section */}
+        {/* Directly Below Stage Canvas: Stage Gear Library & Presets */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 space-y-4 shadow-xs" id="plot-toolbox">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <span>Stage Gear Library</span>
+                <span className="text-[10px] font-normal text-slate-400">Click to add gear onto the stage above</span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Add instruments, vocal mics, and floor wedges to your stage setup.
+              </p>
+            </div>
+
+            {/* Categorized Filter Tabs + Custom Instrument CTA */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:w-auto w-full">
+              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-[10px] font-bold sm:w-auto w-full">
+                <button
+                  type="button"
+                  onClick={() => setActiveToolboxTab("all")}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-center whitespace-nowrap ${
+                    activeToolboxTab === "all" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveToolboxTab("backline")}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-center whitespace-nowrap ${
+                    activeToolboxTab === "backline" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  Instruments
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveToolboxTab("monitoring")}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-center whitespace-nowrap ${
+                    activeToolboxTab === "monitoring" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  Monitors
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveToolboxTab("mics")}
+                  className={`flex-1 sm:flex-initial px-3 py-1.5 rounded-lg transition-colors cursor-pointer text-center whitespace-nowrap ${
+                    activeToolboxTab === "mics" ? "bg-white text-slate-900 shadow-2xs" : "text-slate-500 hover:text-slate-900"
+                  }`}
+                >
+                  Mics/DI
+                </button>
+              </div>
+
+              <button
+                type="button"
+                id="btn-header-custom-gear"
+                onClick={handleOpenCustomGearModal}
+                className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs whitespace-nowrap shrink-0"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Custom Instrument / Gear</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Gear Palette Items */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2.5" id="toolbox-items-list">
+            {TOOLBOX_TEMPLATES.filter(tmpl => activeToolboxTab === "all" || tmpl.category === activeToolboxTab).map((tmpl) => (
+              <button
+                key={`${tmpl.type}-${tmpl.label}`}
+                type="button"
+                id={`btn-toolbox-${tmpl.type}-${tmpl.kickType || "default"}`}
+                onClick={() => handleAddTemplateToStage(tmpl)}
+                className="w-full flex items-center justify-between text-left p-2.5 rounded-xl border border-slate-200/90 hover:border-indigo-400 hover:bg-indigo-50/30 text-xs font-bold text-slate-800 group transition-all cursor-pointer shadow-2xs"
+              >
+                <div className="flex items-center gap-2.5 truncate">
+                  <div className="w-8 h-9 rounded-lg bg-slate-50 flex items-center justify-center p-0.5 shrink-0 border border-slate-200 group-hover:border-indigo-300">
+                    {tmpl.type === "bass_guitar" ? (
+                      <BassGuitarSvg className="w-5 h-8 shrink-0 select-none" />
+                    ) : tmpl.type === "electric_guitar" ? (
+                      <ElectricGuitarSvg className="w-5 h-8 shrink-0 select-none" />
+                    ) : (
+                      <StageGearGraphic type={tmpl.type} label="" theme="print" mixNumber={tmpl.defaultMix || 1} kickType={tmpl.kickType} />
+                    )}
+                  </div>
+                  <div className="truncate">
+                    <div className="truncate text-xs text-slate-900">{tmpl.label}</div>
+                    <div className="text-[10px] font-normal text-slate-400 truncate">{tmpl.defaultMic}</div>
+                  </div>
+                </div>
+                <Plus className="w-3.5 h-3.5 shrink-0 text-slate-400 group-hover:text-indigo-600 group-hover:scale-110 transition-transform" />
+              </button>
+            ))}
+
+            {/* Last Tile in Grid: + Custom Instrument / Gear */}
+            <button
+              type="button"
+              id="btn-toolbox-custom-gear"
+              onClick={handleOpenCustomGearModal}
+              className="w-full flex items-center justify-between text-left p-2.5 rounded-xl border-2 border-dashed border-indigo-300 bg-indigo-50/40 hover:border-indigo-500 hover:bg-indigo-50/80 text-xs font-bold text-indigo-900 group transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-8 h-9 rounded-lg bg-white flex items-center justify-center p-1 shrink-0 border border-indigo-200 group-hover:border-indigo-400 text-indigo-600">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div className="truncate">
+                  <div className="truncate text-xs text-indigo-950 font-extrabold">Custom Instrument / Gear</div>
+                  <div className="text-[10px] font-normal text-indigo-600 truncate">Upright, Grand Piano, Horns...</div>
+                </div>
+              </div>
+              <Plus className="w-3.5 h-3.5 shrink-0 text-indigo-500 group-hover:text-indigo-700 group-hover:scale-110 transition-transform" />
+            </button>
+          </div>
+
+          <hr className="border-slate-100" />
+
+          {/* Band Layout Presets */}
+          <div className="space-y-2">
+            <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Stage Layout Presets
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => handleLoadPreset("standard")}
+                className="p-2.5 rounded-xl border border-indigo-200 bg-indigo-50/50 hover:bg-indigo-100/70 text-indigo-900 text-left transition-all cursor-pointer flex items-center justify-between"
+              >
+                <span>⭐ Clean Rider Standard (Reference)</span>
+                <ChevronRight className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLoadPreset("rock")}
+                className="p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-slate-700 text-left transition-all cursor-pointer"
+              >
+                🎸 4-Piece Rock Band
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLoadPreset("acoustic")}
+                className="p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/30 text-slate-700 text-left transition-all cursor-pointer"
+              >
+                🪕 Acoustic Trio / Folk
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLoadPreset("clear")}
+                className="p-2.5 rounded-xl border border-rose-100 hover:border-rose-300 hover:bg-rose-50 text-rose-600 text-left transition-all cursor-pointer"
+              >
+                🗑️ Clear Stage
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Clean Channel Patch List & Monitor Specs Section */}
           <div className="bg-white rounded-3xl border border-slate-200 p-5 sm:p-6 space-y-5 shadow-xs" id="patch-list-card">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
               <div className="flex items-center gap-2">
@@ -1827,7 +1978,6 @@ export default function StagePlotDesigner({
               </div>
             )}
           </div>
-        </div>
       </div>
 
       {/* Export Modal */}
@@ -1912,6 +2062,177 @@ export default function StagePlotDesigner({
         </div>
       )}
 
+      {/* Custom Instrument / Gear Quick Add Modal */}
+      {showCustomGearModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in"
+          onClick={() => setShowCustomGearModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="custom-gear-modal-title"
+          id="custom-gear-modal"
+        >
+          <form
+            onSubmit={handleCreateCustomGear}
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-2xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-200 space-y-4 text-left"
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 id="custom-gear-modal-title" className="text-base font-black text-slate-900">
+                  Add Custom Instrument or Gear
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Place any custom stage item and optionally append it to your Input Patch List.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCustomGearModal(false)}
+                className="text-slate-400 hover:text-slate-700 p-1.5 rounded-lg cursor-pointer"
+                aria-label="Close modal"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* 1. Instrument / Gear Name (Required) */}
+            <div className="space-y-1.5">
+              <label htmlFor="custom-gear-name-input" className="block text-xs font-bold text-slate-800">
+                Instrument / Gear Name <span className="text-rose-600">*</span>
+              </label>
+              <input
+                ref={customNameInputRef}
+                id="custom-gear-name-input"
+                type="text"
+                required
+                value={customGearName}
+                onChange={(e) => {
+                  setCustomGearName(e.target.value);
+                  if (customGearError) setCustomGearError(null);
+                }}
+                placeholder="e.g., Grand Piano, Upright Bass, Cello, Pedal Steel"
+                className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              {customGearError && (
+                <p className="text-[11px] font-semibold text-rose-600">{customGearError}</p>
+              )}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                {[
+                  { label: "Stand-Up Bass", shape: "strings_upright" as CustomGearIconShape, mic: "DPA 4099B + Radial J48 DI" },
+                  { label: "Grand Piano", shape: "grand_piano_keys" as CustomGearIconShape, mic: "Stereo Pair Condenser (KSM137)" },
+                  { label: "Cello", shape: "strings_upright" as CustomGearIconShape, mic: "DPA 4099C / Active DI" },
+                  { label: "Pedal Steel", shape: "amp_cabinet" as CustomGearIconShape, mic: "Shure SM57 + Radial J48" },
+                  { label: "Percussion Rig", shape: "percussion" as CustomGearIconShape, mic: "2x SM57 + KSM32 OH" },
+                  { label: "Horn Section", shape: "horns_woodwinds" as CustomGearIconShape, mic: "Sennheiser MD421 / Clip Mic" }
+                ].map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      setCustomGearName(preset.label);
+                      setCustomGearShape(preset.shape);
+                      if (!customGearMic.trim()) setCustomGearMic(preset.mic);
+                      setCustomGearError(null);
+                    }}
+                    className="px-2 py-1 rounded-md bg-slate-100 hover:bg-indigo-50 hover:text-indigo-700 text-[10px] font-semibold text-slate-600 border border-slate-200 cursor-pointer transition-colors"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Category / Icon Shape Selector */}
+            <div className="space-y-1.5">
+              <div className="text-xs font-bold text-slate-800">Category / Icon Shape</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {CUSTOM_GEAR_ICON_OPTIONS.map((opt) => {
+                  const isSelectedShape = customGearShape === opt.shape;
+                  return (
+                    <button
+                      key={opt.shape}
+                      type="button"
+                      onClick={() => setCustomGearShape(opt.shape)}
+                      className={`p-2.5 rounded-xl border text-left flex items-center gap-2.5 transition-all cursor-pointer ${
+                        isSelectedShape
+                          ? "border-indigo-600 bg-indigo-50/70 ring-1 ring-indigo-500 text-indigo-950"
+                          : "border-slate-200 hover:border-slate-300 bg-white text-slate-700"
+                      }`}
+                    >
+                      <div className="w-8 h-9 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center p-1 shrink-0">
+                        <CustomGearVectorSvg shape={opt.shape} className="w-full h-full select-none" />
+                      </div>
+                      <span className="text-[11px] font-bold leading-tight">{opt.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. Mic / DI Preference (Optional) */}
+            <div className="space-y-1">
+              <label htmlFor="custom-gear-mic-input" className="block text-xs font-bold text-slate-800">
+                Mic / DI Preference <span className="text-slate-400 font-normal">(optional)</span>
+              </label>
+              <input
+                id="custom-gear-mic-input"
+                type="text"
+                value={customGearMic}
+                onChange={(e) => setCustomGearMic(e.target.value)}
+                placeholder={`e.g., ${CUSTOM_GEAR_ICON_OPTIONS.find(o => o.shape === customGearShape)?.defaultMic || "DPA 4099 / Radial J48 DI"}`}
+                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+
+            {/* 4. Auto-Add to Input Patch List Toggle (Default ON) */}
+            <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="space-y-0.5">
+                <div className="text-xs font-bold text-slate-900">Auto-Add to Input Patch List</div>
+                <div className="text-[11px] text-slate-500">
+                  Appends as Channel {inputChannels.length > 0 ? Math.max(...inputChannels.map(c => c.channel)) + 1 : 1} with mic/DI specs.
+                </div>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoAddCustomToPatch}
+                id="toggle-auto-add-patch"
+                onClick={() => setAutoAddCustomToPatch(prev => !prev)}
+                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                  autoAddCustomToPatch ? "bg-indigo-600" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-xs transition duration-200 ease-in-out ${
+                    autoAddCustomToPatch ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {/* Modal Footer Actions */}
+            <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowCustomGearModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                id="btn-submit-custom-gear"
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-extrabold cursor-pointer shadow-sm flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add to Stage Plot</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Semantic Musician Guide & SEO Content */}
       <StagePlotSeoGuide />
 
@@ -1963,7 +2284,7 @@ export default function StagePlotDesigner({
 
             {/* Placed Elements Graphic */}
             {elements.map((el) => {
-              const sizeClasses = getElementSizeClasses(el.type);
+              const sizeClasses = getElementSizeClasses(el.type, el.customIcon);
               return (
                 <div
                   key={el.id}
@@ -1980,6 +2301,14 @@ export default function StagePlotDesigner({
                     mixNumber={el.mixNumber}
                     theme="print" 
                     kickType={el.kickType}
+                    customIcon={el.customIcon}
+                    customSvg={
+                      el.type === "bass_guitar" ? (
+                        <BassGuitarSvg className="w-7 h-12 shrink-0 select-none" />
+                      ) : el.type === "electric_guitar" ? (
+                        <ElectricGuitarSvg className="w-7 h-12 shrink-0 select-none" />
+                      ) : undefined
+                    }
                   />
                 </div>
               );

@@ -767,10 +767,219 @@ function getProcessedVenuesList() {
   return result;
 }
 
-app.get("/api/bands", (req, res) => {
+const DEFAULT_FREE_UNLOCKS = 2;
+const serverUserUnlocksMap = new Map<string, { free_unlocks: number; unlocked_band_ids: string[] }>();
+
+function parseUnlockedBandIdsInput(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) {
+    return Array.from(new Set(raw.map((v) => String(v || "").trim()).filter(Boolean)));
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return Array.from(new Set(parsed.map((v) => String(v || "").trim()).filter(Boolean)));
+        }
+      } catch (_) {}
+    }
+    return Array.from(
+      new Set(
+        trimmed
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      )
+    );
+  }
+  return [];
+}
+
+function redactBandRecord(b: any) {
+  const {
+    contactPhone,
+    epkUrl,
+    musicUrl,
+    audioPreviewUrl,
+    spotifyUrl,
+    bandcampUrl,
+    website,
+    listenUrl,
+    primaryLink,
+    bookingAgencyEmail,
+    bookingAgencyPhone,
+    bookingAgencyWebsite,
+    ...rest
+  } = b as any;
+  return {
+    ...rest,
+    contactEmail: "--****",
+    contactPhone: undefined,
+    website: undefined,
+    epkUrl: undefined,
+    musicUrl: undefined,
+    spotifyUrl: undefined,
+    bandcampUrl: undefined,
+    audioPreviewUrl: undefined,
+    listenUrl: undefined,
+    primaryLink: undefined,
+    bookingAgencyEmail: b.hasBookingAgency ? "--****" : undefined,
+    bookingAgencyPhone: undefined,
+    bookingAgencyWebsite: undefined
+  };
+}
+
+async function resolveServerUserUnlockState(
+  userEmail: string,
+  clientHintIds: string[] = []
+): Promise<{ free_unlocks: number; unlocked_band_ids: string[] }> {
+  const cleanEmail = (userEmail || "").trim().toLowerCase();
+  if (!cleanEmail || !cleanEmail.includes("@")) {
+    return { free_unlocks: 0, unlocked_band_ids: [] };
+  }
+
+  let state = serverUserUnlocksMap.get(cleanEmail);
+  if (!state) {
+    let dbFree: number | undefined;
+    let dbIds: string[] = [];
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("profiles")
+        .select("free_unlocks, unlocked_band_ids")
+        .eq("email", cleanEmail)
+        .maybeSingle();
+      if (!error && data) {
+        if (typeof (data as any).free_unlocks === "number") {
+          dbFree = Math.max(0, Math.floor((data as any).free_unlocks));
+        }
+        if (Array.isArray((data as any).unlocked_band_ids)) {
+          dbIds = parseUnlockedBandIdsInput((data as any).unlocked_band_ids);
+        }
+      }
+    } catch (_) {}
+
+    // If no DB columns yet, allow client hints strictly capped at DEFAULT_FREE_UNLOCKS (2)
+    const mergedIds = Array.from(new Set(dbIds));
+    for (const hintId of clientHintIds) {
+      if (mergedIds.length >= DEFAULT_FREE_UNLOCKS) break;
+      if (!mergedIds.includes(hintId)) mergedIds.push(hintId);
+    }
+
+    const freeCount =
+      typeof dbFree === "number"
+        ? Math.max(0, dbFree)
+        : Math.max(0, DEFAULT_FREE_UNLOCKS - mergedIds.length);
+
+    state = {
+      free_unlocks: freeCount,
+      unlocked_band_ids: mergedIds
+    };
+    serverUserUnlocksMap.set(cleanEmail, state);
+  } else if (clientHintIds.length > 0 && state.unlocked_band_ids.length === 0) {
+    const merged = [...state.unlocked_band_ids];
+    for (const hintId of clientHintIds) {
+      if (merged.length >= DEFAULT_FREE_UNLOCKS) break;
+      if (!merged.includes(hintId)) merged.push(hintId);
+    }
+    state = {
+      free_unlocks: Math.max(0, DEFAULT_FREE_UNLOCKS - merged.length),
+      unlocked_band_ids: merged
+    };
+    serverUserUnlocksMap.set(cleanEmail, state);
+  }
+
+  return state;
+}
+
+app.post(["/api/user/unlock-band", "/api/bands/unlock"], async (req, res) => {
+  try {
+    const userEmail = (
+      (req.body?.email || req.body?.userEmail || req.headers["x-user-email"] || "") as string
+    )
+      .trim()
+      .toLowerCase();
+    const bandId = String(req.body?.bandId || req.body?.band_id || "").trim();
+    const hintIds = parseUnlockedBandIdsInput(
+      req.body?.unlockedBandIds || req.body?.unlocked_band_ids || req.headers["x-unlocked-band-ids"]
+    );
+
+    if (!userEmail || !userEmail.includes("@")) {
+      res.status(401).json({ error: "Sign in required to use free band unlocks." });
+      return;
+    }
+    if (isBandBanned(userEmail)) {
+      res.status(403).json({ error: "Access denied for this account." });
+      return;
+    }
+    if (!bandId) {
+      res.status(400).json({ error: "Valid bandId is required." });
+      return;
+    }
+
+    const state = await resolveServerUserUnlockState(userEmail, hintIds);
+    const alreadyUnlocked = state.unlocked_band_ids.includes(bandId);
+
+    if (!alreadyUnlocked) {
+      if (state.free_unlocks <= 0) {
+        res.status(402).json({
+          error: "No free unlocks remaining. Upgrade to the 30-Day All Access Pass ($9.99).",
+          free_unlocks: 0,
+          unlocked_band_ids: state.unlocked_band_ids
+        });
+        return;
+      }
+
+      const nextFreeUnlocks = Math.max(0, state.free_unlocks - 1);
+      const nextUnlockedIds = [...state.unlocked_band_ids, bandId];
+      const updatedState = {
+        free_unlocks: nextFreeUnlocks,
+        unlocked_band_ids: nextUnlockedIds
+      };
+      serverUserUnlocksMap.set(userEmail, updatedState);
+
+      try {
+        await supabaseAdmin
+          .from("profiles")
+          .update({
+            free_unlocks: nextFreeUnlocks,
+            unlocked_band_ids: nextUnlockedIds
+          })
+          .eq("email", userEmail);
+      } catch (_) {}
+    }
+
+    const finalState = serverUserUnlocksMap.get(userEmail) || state;
+    const allCurrentBands = getProcessedBandsList();
+    const matched = allCurrentBands.find((b) => String(b.id) === bandId);
+
+    res.json({
+      success: true,
+      free_unlocks: finalState.free_unlocks,
+      unlocked_band_ids: finalState.unlocked_band_ids,
+      band: matched
+        ? {
+            ...matched,
+            contactPhone: sanitizeBandPhoneNumber(matched.contactPhone),
+            isFreeUnlocked: true
+          }
+        : null
+    });
+  } catch (err: any) {
+    console.error("[Server] /api/user/unlock-band error:", err);
+    res.status(500).json({ error: "Failed to unlock band contact & links." });
+  }
+});
+
+app.get("/api/bands", async (req, res) => {
   const expiresAt = (req.headers["x-access-expires-at"] || req.query.accessExpiresAt) as string;
   const userEmail = ((req.headers["x-user-email"] || req.query.email) as string || "").trim().toLowerCase();
-  
+  const hintUnlockedIds = parseUnlockedBandIdsInput(
+    req.headers["x-unlocked-band-ids"] || req.query.unlockedBandIds
+  );
+
   const isUserLoggedIn = Boolean(userEmail && userEmail.length > 0 && userEmail.includes("@"));
   const isOwner = isUserLoggedIn && isOwnerEmail(userEmail);
   const isRevoked = isBandBanned(userEmail);
@@ -802,31 +1011,36 @@ app.get("/api/bands", (req, res) => {
       bands: bandsWithSanitizedContacts
     });
   } else {
-    // Redact contact fields and all external Bandcamp/music/EPK/website links for non-subscribers
-    const redactedBands = allCurrentBands.map((b) => {
-      const { contactPhone, epkUrl, musicUrl, audioPreviewUrl, spotifyUrl, bandcampUrl, website, ...rest } = b as any;
-      return {
-        ...rest,
-        contactEmail: "--****",
-        website: undefined,
-        epkUrl: undefined,
-        musicUrl: undefined,
-        spotifyUrl: undefined,
-        bandcampUrl: undefined,
-        audioPreviewUrl: undefined
-      };
+    const unlockState = isUserLoggedIn && !isRevoked
+      ? await resolveServerUserUnlockState(userEmail, hintUnlockedIds)
+      : { free_unlocks: 0, unlocked_band_ids: [] as string[] };
+    const unlockedSet = new Set(unlockState.unlocked_band_ids);
+
+    // Redact contact fields, agency contacts, and all external Bandcamp/music/EPK/website/listen links
+    // unless the band ID is in the logged-in user's unlocked_band_ids
+    const maskedOrUnmaskedBands = allCurrentBands.map((b) => {
+      if (isUserLoggedIn && !isRevoked && unlockedSet.has(String(b.id))) {
+        return {
+          ...b,
+          contactPhone: sanitizeBandPhoneNumber(b.contactPhone),
+          isFreeUnlocked: true
+        };
+      }
+      return redactBandRecord(b);
     });
     res.json({
       accessStatus: isUserLoggedIn ? "locked" : "login_required",
+      free_unlocks: unlockState.free_unlocks,
+      unlocked_band_ids: unlockState.unlocked_band_ids,
       message: isUserLoggedIn 
-        ? "Contact information, EPK, and Listen links are masked. Active 30-day paid pass ($9.99/mo) required to view unmasked booking emails and audio."
-        : "Login required. Only paid subscribers with up-to-date subscriptions who are logged into their account can view band contact info, EPK, and Listen links.",
-      bands: redactedBands
+        ? "Contact information, EPK, and Listen links are masked unless unlocked with a free unlock or an active 30-day paid pass ($9.99/mo)."
+        : "Login required. Sign up for 2 free band unlocks or upgrade to the 30-day paid pass ($9.99/mo) to view band contact info, EPK, and Listen links.",
+      bands: maskedOrUnmaskedBands
     });
   }
 });
 
-app.post("/api/bands", (req, res) => {
+app.post("/api/bands", async (req, res) => {
   const expiresAt = (
     req.body?.accessExpiresAt || 
     req.headers["x-access-expires-at"] || 
@@ -837,6 +1051,9 @@ app.post("/api/bands", (req, res) => {
     req.headers["x-user-email"] ||
     req.query.email) as string || ""
   ).trim().toLowerCase();
+  const hintUnlockedIds = parseUnlockedBandIdsInput(
+    req.body?.unlockedBandIds || req.body?.unlocked_band_ids || req.headers["x-unlocked-band-ids"]
+  );
 
   const isUserLoggedIn = Boolean(userEmail && userEmail.length > 0 && userEmail.includes("@"));
   const isOwner = isUserLoggedIn && isOwnerEmail(userEmail);
@@ -857,35 +1074,39 @@ app.post("/api/bands", (req, res) => {
   const allCurrentBands = getProcessedBandsList();
 
   if (isAccessActive) {
-    const bandsWithoutPhone = allCurrentBands.map((b) => {
-      const { contactPhone, ...rest } = b as any;
-      return rest;
-    });
+    const bandsWithoutPhone = allCurrentBands.map((b) => ({
+      ...b,
+      contactPhone: sanitizeBandPhoneNumber(b.contactPhone)
+    }));
     res.json({
       accessStatus: isOwner ? "lifetime_owner" : "unlocked",
       expiresAt: isOwner ? "perpetual_lifetime" : expiresAt,
       bands: bandsWithoutPhone
     });
   } else {
-    const redactedBands = allCurrentBands.map((b) => {
-      const { contactPhone, epkUrl, musicUrl, audioPreviewUrl, spotifyUrl, bandcampUrl, website, ...rest } = b as any;
-      return {
-        ...rest,
-        contactEmail: "--****",
-        website: undefined,
-        epkUrl: undefined,
-        musicUrl: undefined,
-        spotifyUrl: undefined,
-        bandcampUrl: undefined,
-        audioPreviewUrl: undefined
-      };
+    const unlockState = isUserLoggedIn && !isRevoked
+      ? await resolveServerUserUnlockState(userEmail, hintUnlockedIds)
+      : { free_unlocks: 0, unlocked_band_ids: [] as string[] };
+    const unlockedSet = new Set(unlockState.unlocked_band_ids);
+
+    const maskedOrUnmaskedBands = allCurrentBands.map((b) => {
+      if (isUserLoggedIn && !isRevoked && unlockedSet.has(String(b.id))) {
+        return {
+          ...b,
+          contactPhone: sanitizeBandPhoneNumber(b.contactPhone),
+          isFreeUnlocked: true
+        };
+      }
+      return redactBandRecord(b);
     });
     res.json({
       accessStatus: isUserLoggedIn ? "locked" : "login_required",
+      free_unlocks: unlockState.free_unlocks,
+      unlocked_band_ids: unlockState.unlocked_band_ids,
       message: isUserLoggedIn 
-        ? "Contact information, EPK, and Listen links are masked. Active 30-day paid pass ($9.99/mo) required to view unmasked booking emails and audio."
-        : "Login required. Only paid subscribers with up-to-date subscriptions who are logged into their account can view band contact info, EPK, and Listen links.",
-      bands: redactedBands
+        ? "Contact information, EPK, and Listen links are masked unless unlocked with a free unlock or an active 30-day paid pass ($9.99/mo)."
+        : "Login required. Sign up for 2 free band unlocks or upgrade to the 30-day paid pass ($9.99/mo) to view band contact info, EPK, and Listen links.",
+      bands: maskedOrUnmaskedBands
     });
   }
 });
@@ -2045,7 +2266,7 @@ const ROUTE_METADATA_MAP: Record<string, RouteMetadata> = {
     subhead: "Believable, real-world road and studio guides written by touring musicians and veteran sound engineers."
   },
   "/blog": {
-    title: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
+    title: "Tour Advice Playbooks & Road Wisdom (20 Articles) | GigLizard",
     description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
     canonical: "https://www.giglizard.us/articles",
     heading: "Tour Advice, Studio Recording & Merch Strategy",
@@ -2727,7 +2948,7 @@ async function renderHtmlForRoute(rawTemplate: string, reqPath: string, reqQuery
         "@context": "https://schema.org",
         "@type": "ItemList",
         "name": "Tour Advice Playbooks & Road Wisdom",
-        "description": "10 original touring guides and playbooks written by touring musicians and live sound engineers.",
+        "description": "20 original touring guides and playbooks written by touring musicians and live sound engineers.",
         "url": "https://www.giglizard.us/articles",
         "numberOfItems": TOUR_ARTICLES.length,
         "itemListElement": TOUR_ARTICLES.map((art, idx) => ({

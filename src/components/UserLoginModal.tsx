@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { analytics } from "@heycatch/sdk";
 import { UserAccount, AvailableBand, Venue } from "../types";
 import { sanitizeInputText } from "../utils/antiScrape";
-import { isBandBanned, isPerpetualPassEmail } from "../utils/accessControl";
+import { isBandBanned, isPerpetualPassEmail, normalizeUserUnlockFields, DEFAULT_FREE_UNLOCKS } from "../utils/accessControl";
 import { getCachedProfiles, fetchProfiles, insertProfile, supabase, resolveAccountFromDatabase, linkAuthUidToBand, saveBandToDatabase, saveVenueToDatabase } from "../lib/supabase";
 import { recordLiveSignup } from "../utils/analyticsStore";
 import { 
@@ -54,7 +54,7 @@ export default function UserLoginModal({
 
   const handleGuestSignIn = () => {
     const guestId = "guest_" + Math.random().toString(36).substring(2, 9);
-    const guestAccount: UserAccount = {
+    const guestAccount: UserAccount = normalizeUserUnlockFields({
       id: guestId,
       type: "Guest",
       role: "Guest",
@@ -63,9 +63,11 @@ export default function UserLoginModal({
       contactEmail: `guest_${guestId}@giglizard.us`,
       isPremium: false,
       hasPaidAccess: false,
+      free_unlocks: DEFAULT_FREE_UNLOCKS,
+      unlocked_band_ids: [],
       genre: "Music Fan & Explorer",
       bio: "Guest session exploring GigLizard live music venues and stage tools."
-    };
+    });
     try {
       localStorage.setItem("current_user_account_v1", JSON.stringify(guestAccount));
     } catch (_) {}
@@ -250,7 +252,7 @@ export default function UserLoginModal({
           const roleType = (resolved.role || "Band") as "Band" | "Venue" | "Sound Engineer";
           const finalName = resolved.isOwner || cleanEmail === "littlerusty@gmail.com" ? "Dr Hadit" : resolved.name;
 
-          const payload: UserAccount = {
+          const payload: UserAccount = normalizeUserUnlockFields({
             id: resolved.bandRecord?.id || resolved.profileRecord?.id || signInData.user.id,
             email: cleanEmail,
             role: roleType,
@@ -270,10 +272,12 @@ export default function UserLoginModal({
             musicUrl: resolved.bandRecord?.music_url || resolved.profileRecord?.music_url || undefined,
             epkUrl: resolved.bandRecord?.epk_url || resolved.profileRecord?.epk_url || undefined,
             contactPhone: resolved.profileRecord?.phone || undefined,
+            free_unlocks: typeof resolved.profileRecord?.free_unlocks === "number" ? resolved.profileRecord.free_unlocks : DEFAULT_FREE_UNLOCKS,
+            unlocked_band_ids: Array.isArray(resolved.profileRecord?.unlocked_band_ids) ? resolved.profileRecord.unlocked_band_ids : [],
             experienceLevel: resolved.bandRecord?.touring_tier
               ? (resolved.bandRecord.touring_tier.includes("National") ? "National Act" : resolved.bandRecord.touring_tier.includes("Regional") ? "Regional Tour" : "Local")
               : ((resolved.profileRecord?.experience_level as any) || "Local")
-          };
+          });
 
           try {
             localStorage.setItem("current_user_account_v1", JSON.stringify(payload));
@@ -366,7 +370,7 @@ export default function UserLoginModal({
         setErrorMessage("Access denied: Incorrect password for registered band account.");
         return;
       }
-      const payload: UserAccount = {
+      const payload: UserAccount = normalizeUserUnlockFields({
         type: "Band",
         name: foundCustomBand.name,
         city: foundCustomBand.city,
@@ -380,7 +384,7 @@ export default function UserLoginModal({
         website: foundCustomBand.website,
         contactPhone: foundCustomBand.contactPhone,
         password: requiredPass
-      };
+      });
       setSuccessMessage(`✅ Welcome back! Logged in as Band: ${foundCustomBand.name}.`);
       setTimeout(() => {
         onLoginSuccess(payload);
@@ -399,7 +403,7 @@ export default function UserLoginModal({
         setErrorMessage("Access denied: Incorrect password for registered venue account.");
         return;
       }
-      const payload: UserAccount = {
+      const payload: UserAccount = normalizeUserUnlockFields({
         type: "Venue",
         name: foundCustomVenue.name,
         city: foundCustomVenue.city,
@@ -416,7 +420,7 @@ export default function UserLoginModal({
         contactPhone: foundCustomVenue.contactPhone,
         website: foundCustomVenue.website,
         password: requiredPass
-      };
+      });
       setSuccessMessage(`✅ Welcome back! Logged in as Venue: ${foundCustomVenue.name}.`);
       setTimeout(() => {
         onLoginSuccess(payload);
@@ -449,7 +453,7 @@ export default function UserLoginModal({
         return;
       }
       const roleType = (foundProfile.type || foundProfile.role || "Band") as "Band" | "Venue" | "Sound Engineer";
-      const payload: UserAccount = {
+      const payload: UserAccount = normalizeUserUnlockFields({
         type: roleType,
         name: foundProfile.name,
         city: foundProfile.city,
@@ -464,8 +468,10 @@ export default function UserLoginModal({
         hasLighting: foundProfile.has_lighting ?? undefined,
         contactPhone: foundProfile.contact_phone || foundProfile.phone || undefined,
         website: foundProfile.website || undefined,
+        free_unlocks: typeof foundProfile.free_unlocks === "number" ? foundProfile.free_unlocks : DEFAULT_FREE_UNLOCKS,
+        unlocked_band_ids: Array.isArray(foundProfile.unlocked_band_ids) ? foundProfile.unlocked_band_ids : [],
         password: requiredPass
-      };
+      });
       setSuccessMessage(`✅ Welcome back! Logged in as ${roleType}: ${foundProfile.name}.`);
       setTimeout(() => {
         onLoginSuccess(payload);
@@ -577,6 +583,8 @@ export default function UserLoginModal({
             website: '',
             epk_link: '',
             touring_status: 'Local',
+            free_unlocks: DEFAULT_FREE_UNLOCKS,
+            unlocked_band_ids: [],
             created_at: new Date().toISOString()
           };
 
@@ -628,7 +636,9 @@ export default function UserLoginModal({
         type: loginRole,
         city: finalCity,
         genres: loginRole === "Venue" ? "Live Music" : (loginRole === "Sound Engineer" ? "FOH, Monitors, Studio" : "Alternative Rock"),
-        bio: `${loginRole} profile registered on GigLizard.`
+        bio: `${loginRole} profile registered on GigLizard.`,
+        free_unlocks: DEFAULT_FREE_UNLOCKS,
+        unlocked_band_ids: []
       });
     } catch (err) {
       console.warn("[Supabase] Failed to insert profile during sign up:", err);
@@ -712,17 +722,19 @@ export default function UserLoginModal({
       localStorage.setItem("user_custom_passwords_v1", JSON.stringify(passwordsMap));
     } catch (_) {}
 
-    const defaultAccount: UserAccount = {
+    const defaultAccount: UserAccount = normalizeUserUnlockFields({
       type: loginRole,
       name: finalName,
       city: finalCity,
       isPremium: false,
       hasPaidAccess: false,
       contactEmail: cleanEmail,
+      free_unlocks: DEFAULT_FREE_UNLOCKS,
+      unlocked_band_ids: [],
       genre: loginRole === "Venue" ? "Live Music" : (loginRole === "Sound Engineer" ? "Front of House / Audio" : "Alternative Rock"),
       bio: `${loginRole} account registered on GigLizard.`,
       password: cleanPassword
-    };
+    });
 
     setSuccessMessage(`✅ Registered & signed in as: ${defaultAccount.name}`);
     setTimeout(() => {
@@ -765,17 +777,17 @@ export default function UserLoginModal({
           </div>
           <h3 className="text-xl font-black text-white tracking-tight">
             {modalMode === "signup"
-              ? "Create Free Account Profile"
+              ? "Sign Up Free — Get 2 Free Band Unlocks"
               : modalMode === "forgot"
               ? "Reset Account Password"
-              : "Account Sign In Required"}
+              : "Sign In (or Sign Up for 2 Free Unlocks)"}
           </h3>
           <p className="text-xs text-slate-300 max-w-sm mx-auto leading-relaxed">
             {modalMode === "signup"
-              ? "Register your band, venue room, or sound engineering tech profile into the shared directory."
+              ? "Create your free account to receive 2 Free Unlocks immediately for any band's Booking Email and Listen / EPK Link."
               : modalMode === "forgot"
               ? "Enter your account email to receive a secure recovery link dispatched directly from Supabase Auth."
-              : "Band contact information is reserved for logged-in users with an active, up-to-date paid subscription."}
+              : "Sign in to use your 2 Free Unlocks or access your 30-Day All Access Pass ($9.99) for unlimited band booking emails & listen links."}
           </p>
 
           {/* Mode Switcher Tabs */}

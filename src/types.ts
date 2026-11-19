@@ -151,6 +151,7 @@ export interface AvailableBand {
   bookingAgencyEmail?: string | null; // e.g. "staff@intrepidartists.com"
   bookingAgencyPhone?: string | null; // e.g. "(704) 358-4501"
   bookingAgencyWebsite?: string | null; // e.g. "https://www.intrepidartists.com"
+  isFreeUnlocked?: boolean;
 }
 
 export interface BandProfile {
@@ -315,6 +316,11 @@ export interface UserAccount {
   bookingAgencyEmail?: string | null;
   bookingAgencyPhone?: string | null;
   bookingAgencyWebsite?: string | null;
+  // 2 Free Unlocks System
+  freeUnlocks?: number;
+  free_unlocks?: number;
+  unlockedBandIds?: string[];
+  unlocked_band_ids?: string[];
 }
 
 export type ReviewAuthorRole = 

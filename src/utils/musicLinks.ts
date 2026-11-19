@@ -291,7 +291,24 @@ export function isDedicatedWebsite(url: string): boolean {
  *
  * Guaranteed to return a link so each band has a destination to listen/view and contact them.
  */
-export function resolveMostRelevantBandLink(band: Partial<AvailableBand>): ResolvedBandPrimaryLink {
+export function resolveMostRelevantBandLink(
+  band: Partial<AvailableBand>,
+  options?: { isUnlocked?: boolean }
+): ResolvedBandPrimaryLink {
+  const isMaskedBand =
+    options?.isUnlocked === false ||
+    (options?.isUnlocked !== true && band.contactEmail === "--****");
+
+  if (isMaskedBand) {
+    return {
+      url: "",
+      type: "other",
+      label: "Protected Link",
+      badge: "Locked",
+      actionText: "--****"
+    };
+  }
+
   const normId = (band.id || "").trim().toLowerCase();
   const normName = (band.name || "").trim().toLowerCase();
   const cleanId = normId.replace(/^(or|wa|ca|co|az|rockies)-/, "");
@@ -510,8 +527,14 @@ export function resolveMostRelevantBandLink(band: Partial<AvailableBand>): Resol
 /**
  * Legacy compatibility helper.
  */
-export function getVerifiedBandWebsite(band: Partial<AvailableBand>): string | null {
-  if (!band.website) return null;
+export function getVerifiedBandWebsite(
+  band: Partial<AvailableBand>,
+  options?: { isUnlocked?: boolean }
+): string | null {
+  const isMaskedBand =
+    options?.isUnlocked === false ||
+    (options?.isUnlocked !== true && band.contactEmail === "--****");
+  if (isMaskedBand || !band.website) return null;
   const clean = band.website.trim();
   if (!isValidWebUrl(clean)) return null;
   return formatUrl(clean);
@@ -529,8 +552,26 @@ export interface ResolvedBandMusic {
 /**
  * Legacy compatibility helper for existing components.
  */
-export function resolveBandMusicLinks(band: Partial<AvailableBand>): ResolvedBandMusic {
-  const primary = resolveMostRelevantBandLink(band);
+export function resolveBandMusicLinks(
+  band: Partial<AvailableBand>,
+  options?: { isUnlocked?: boolean }
+): ResolvedBandMusic {
+  const isMaskedBand =
+    options?.isUnlocked === false ||
+    (options?.isUnlocked !== true && band.contactEmail === "--****");
+
+  if (isMaskedBand) {
+    return {
+      epkUrl: null,
+      hasEpk: false,
+      musicUrl: null,
+      hasMusic: false,
+      listenUrl: null,
+      platformLabel: "Locked"
+    };
+  }
+
+  const primary = resolveMostRelevantBandLink(band, options);
   const isEpk = primary.type === "epk";
   return {
     epkUrl: isEpk ? primary.url : null,

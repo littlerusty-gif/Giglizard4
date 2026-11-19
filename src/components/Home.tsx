@@ -25,7 +25,7 @@ import {
   BandVisualBadge
 } from "./ProductPreviews";
 import { sanitizeInputText } from "../utils/antiScrape";
-import { isAccessActive, getAccessStatusDetails, isBandBanned, isPerpetualPassEmail } from "../utils/accessControl";
+import { isAccessActive, getAccessStatusDetails, isBandBanned, isPerpetualPassEmail, normalizeUserUnlockFields, DEFAULT_FREE_UNLOCKS } from "../utils/accessControl";
 import { recordLiveSignup } from "../utils/analyticsStore";
 import { resolveBandMusicLinks, categorizeUserMusicLink } from "../utils/musicLinks";
 import { insertProfile, supabase, saveVenueToDatabase, resolveAccountFromDatabase, linkAuthUidToBand } from "../lib/supabase";
@@ -200,7 +200,7 @@ export default function Home({
         const roleType = (resolved.role || heroRole || "Band") as "Band" | "Venue" | "Sound Engineer";
         const finalName = resolved.isOwner || cleanEmail === "littlerusty@gmail.com" ? "Dr Hadit" : resolved.name;
 
-        const payload: UserAccount = {
+        const payload: UserAccount = normalizeUserUnlockFields({
           id: resolved.bandRecord?.id || resolved.profileRecord?.id || signInData.user.id,
           email: cleanEmail,
           role: roleType,
@@ -220,8 +220,10 @@ export default function Home({
           musicUrl: resolved.bandRecord?.music_url || resolved.profileRecord?.music_url || undefined,
           epkUrl: resolved.bandRecord?.epk_url || resolved.profileRecord?.epk_url || undefined,
           contactPhone: resolved.profileRecord?.phone || undefined,
+          free_unlocks: typeof resolved.profileRecord?.free_unlocks === "number" ? resolved.profileRecord.free_unlocks : DEFAULT_FREE_UNLOCKS,
+          unlocked_band_ids: Array.isArray(resolved.profileRecord?.unlocked_band_ids) ? resolved.profileRecord.unlocked_band_ids : [],
           experienceLevel: "Local"
-        };
+        });
 
         try {
           localStorage.setItem("current_user_account_v1", JSON.stringify(payload));
@@ -244,7 +246,7 @@ export default function Home({
         const customPasswordsMap: Record<string, string> = JSON.parse(localStorage.getItem("user_custom_passwords_v1") || "{}");
         const expectedPass = customPasswordsMap[cleanEmail.toLowerCase()] || matchedBand.password || "password";
         if (cleanPassword === expectedPass) {
-          const bandAccount: UserAccount = {
+          const bandAccount: UserAccount = normalizeUserUnlockFields({
             id: matchedBand.id || "band_" + Math.random().toString(36).substring(2, 9),
             email: cleanEmail,
             role: "Band",
@@ -256,7 +258,7 @@ export default function Home({
             contactEmail: cleanEmail,
             genre: matchedBand.genre,
             bio: matchedBand.bio
-          };
+          });
           localStorage.setItem("current_user_account_v1", JSON.stringify(bandAccount));
           analytics.setIdentity(bandAccount.id, { email: cleanEmail, name: bandAccount.name, plan: "free" });
           setHeroLoginSuccess(`✅ Welcome back, ${bandAccount.name}!`);
@@ -297,7 +299,7 @@ export default function Home({
 
   const handleHeroGuestSignIn = () => {
     const guestId = "guest_" + Math.random().toString(36).substring(2, 9);
-    const guestAccount: UserAccount = {
+    const guestAccount: UserAccount = normalizeUserUnlockFields({
       id: guestId,
       type: "Guest",
       role: "Guest",
@@ -306,9 +308,11 @@ export default function Home({
       contactEmail: `guest_${guestId}@giglizard.us`,
       isPremium: false,
       hasPaidAccess: false,
+      free_unlocks: DEFAULT_FREE_UNLOCKS,
+      unlocked_band_ids: [],
       genre: "Music Fan & Explorer",
       bio: "Guest session exploring GigLizard live music venues and stage tools."
-    };
+    });
     try {
       localStorage.setItem("current_user_account_v1", JSON.stringify(guestAccount));
     } catch (_) {}
@@ -417,7 +421,7 @@ export default function Home({
         setLoginError("Access denied: Incorrect password for registered band account.");
         return;
       }
-      const payload: UserAccount = {
+      const payload: UserAccount = normalizeUserUnlockFields({
         type: "Band",
         name: foundCustomBand.name,
         city: foundCustomBand.city,
@@ -429,7 +433,7 @@ export default function Home({
         website: foundCustomBand.website,
         contactPhone: foundCustomBand.contactPhone,
         password: requiredPass
-      };
+      });
       onRegisterAccount(payload);
       setSuccessMessage(`Welcome back! Logged in as Band: ${foundCustomBand.name}.`);
       setTimeout(() => setSuccessMessage(""), 4000);
@@ -787,6 +791,8 @@ export default function Home({
             website: form.website || '',
             epk_link: form.epkLink || form.musicLink || '',
             touring_status: form.touringStatus || 'Local',
+            free_unlocks: DEFAULT_FREE_UNLOCKS,
+            unlocked_band_ids: [],
             created_at: new Date().toISOString()
           });
 
@@ -822,7 +828,7 @@ export default function Home({
       } catch (_) {}
 
       // ALL newly registered accounts start with isPremium = false (free account)
-      const payload: UserAccount = {
+      const payload: UserAccount = normalizeUserUnlockFields({
         id: authData.user?.id,
         email: normalizedEmail,
         role: form.role,
@@ -831,6 +837,8 @@ export default function Home({
         city: formData.city.trim(),
         isPremium: false,
         contactEmail: normalizedEmail,
+        free_unlocks: DEFAULT_FREE_UNLOCKS,
+        unlocked_band_ids: [],
         genre: formData.genre || (accountType === "Band" ? "Alternative Rock" : (accountType === "Venue" ? "Live Music" : "Front of House (FOH) / Audio Tech")),
         bio: formData.bio || (accountType === "Band" ? "Performing live music with enthusiasm." : (accountType === "Venue" ? "A gorgeous live music environment." : "Live sound engineer ready for tour & club dates.")),
         capacity: accountType === "Venue" ? Number(formData.capacity) || 150 : undefined,
@@ -843,7 +851,7 @@ export default function Home({
         hasPA: accountType === "Venue" ? formData.hasPA : undefined,
         hasLighting: accountType === "Venue" ? formData.hasLighting : undefined,
         password: formData.password
-      };
+      });
 
       // Auto-inject into venues, available bands, or sound engineers in localStorage & Supabase
       if (accountType === "Venue") {
@@ -1822,14 +1830,14 @@ export default function Home({
         </div>
       </section>
 
-      {/* Tour Advice & Road Playbooks (10 Dedicated Articles) */}
+      {/* Tour Advice & Road Playbooks (20 Dedicated Articles) */}
       <section className="space-y-6 scroll-mt-20" id="tour-advice-playbooks">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
               <span className="text-xs font-black uppercase tracking-wider text-emerald-600 flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>10 Tour Advice Playbooks</span>
+                <span>20 Tour Advice Playbooks</span>
               </span>
               <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
                 100% Free / No Paywalls
@@ -1851,7 +1859,7 @@ export default function Home({
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-md shrink-0 cursor-pointer group"
           >
-            <span>View All 10 Playbooks (/articles)</span>
+            <span>View All 20 Playbooks (/articles)</span>
             <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-1" />
           </a>
         </div>

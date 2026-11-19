@@ -67,6 +67,8 @@ export interface SupabaseProfile {
   plan?: string;
   status?: string;
   experience_level?: string | null;
+  free_unlocks?: number | null;
+  unlocked_band_ids?: string[] | null;
 }
 
 const STORAGE_PROFILES_CACHE = "giglizard_supabase_profiles_cache_v1";
@@ -174,6 +176,14 @@ export async function insertProfile(profile: Partial<SupabaseProfile>): Promise<
   const phone = (profile.phone || profile.contact_phone || (profile as any).contactPhone || "").trim() || null;
   const bio = (profile.bio || "").trim() || null;
 
+  const freeUnlocksVal =
+    typeof profile.free_unlocks === "number" && !Number.isNaN(profile.free_unlocks)
+      ? Math.max(0, Math.floor(profile.free_unlocks))
+      : 2;
+  const unlockedBandIdsVal = Array.isArray(profile.unlocked_band_ids)
+    ? Array.from(new Set(profile.unlocked_band_ids.map((id) => String(id).trim()).filter(Boolean)))
+    : [];
+
   // The database row matching the Supabase `profiles` table schema
   const dbRow = {
     name,
@@ -185,7 +195,9 @@ export async function insertProfile(profile: Partial<SupabaseProfile>): Promise<
     primary_link: primaryLink,
     phone,
     bio,
-    is_verified: Boolean(profile.is_verified)
+    is_verified: Boolean(profile.is_verified),
+    free_unlocks: freeUnlocksVal,
+    unlocked_band_ids: unlockedBandIdsVal
   };
 
   // Immediate optimistic local cache update
@@ -256,6 +268,61 @@ export async function insertProfile(profile: Partial<SupabaseProfile>): Promise<
   }
 
   return localRecord;
+}
+
+/**
+ * Persists decremented free_unlocks and unlocked_band_ids array back to Supabase `profiles` table
+ * and updates local cached profiles synchronously.
+ */
+export async function persistUserUnlocksToSupabase(params: {
+  email: string;
+  freeUnlocks: number;
+  unlockedBandIds: string[];
+  userId?: string | null;
+}): Promise<void> {
+  const cleanEmail = (params.email || "").trim().toLowerCase();
+  if (!cleanEmail) return;
+
+  const cleanUnlocks = Math.max(0, Math.floor(params.freeUnlocks));
+  const cleanIds = Array.from(
+    new Set((params.unlockedBandIds || []).map((id) => String(id).trim()).filter(Boolean))
+  );
+
+  // Sync local cached profiles immediately
+  try {
+    const cached = getCachedProfiles();
+    const updatedCache = cached.map((p) => {
+      const pEmail = (p.email || p.contact_email || "").trim().toLowerCase();
+      if (pEmail === cleanEmail || (params.userId && p.id === params.userId)) {
+        return {
+          ...p,
+          free_unlocks: cleanUnlocks,
+          unlocked_band_ids: cleanIds
+        };
+      }
+      return p;
+    });
+    setCachedProfiles(updatedCache);
+  } catch (_) {}
+
+  try {
+    const query = supabase
+      .from("profiles")
+      .update({
+        free_unlocks: cleanUnlocks,
+        unlocked_band_ids: cleanIds
+      });
+
+    const { error } = params.userId
+      ? await query.or(`id.eq.${params.userId},email.eq.${cleanEmail}`)
+      : await query.eq("email", cleanEmail);
+
+    if (error && !(error.message?.toLowerCase().includes("column") || error.code === "PGRST204")) {
+      console.warn("[Supabase] Notice syncing free_unlocks to profiles:", error.message);
+    }
+  } catch (_) {
+    // Non-fatal: localStorage + server unlock ledger remain authoritative fallbacks
+  }
 }
 
 /**

@@ -171,4 +171,139 @@ export function maskContactPhone(phone?: string): string {
   return "--****";
 }
 
+/**
+ * Masks external band listen/EPK/website links for locked/expired accounts ('--****')
+ */
+export function maskListenLink(_url?: string | null): string {
+  return "--****";
+}
+
+// ==========================================
+// 2 Free Unlocks System Helpers
+// ==========================================
+export const DEFAULT_FREE_UNLOCKS = 2;
+
+export function getUserUnlockStorageKey(email?: string | null): string | null {
+  const clean = (email || "").trim().toLowerCase();
+  if (!clean || !clean.includes("@")) return null;
+  return `giglizard_user_unlocks_v1_${clean}`;
+}
+
+export function readStoredUserUnlocks(
+  email?: string | null
+): { free_unlocks: number; unlocked_band_ids: string[] } | null {
+  const key = getUserUnlockStorageKey(email);
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const ids = Array.isArray(parsed?.unlocked_band_ids)
+      ? parsed.unlocked_band_ids.map((id: any) => String(id).trim()).filter(Boolean)
+      : [];
+    const unlocks =
+      typeof parsed?.free_unlocks === "number" && !Number.isNaN(parsed.free_unlocks)
+        ? Math.max(0, Math.floor(parsed.free_unlocks))
+        : Math.max(0, DEFAULT_FREE_UNLOCKS - ids.length);
+    return {
+      free_unlocks: unlocks,
+      unlocked_band_ids: Array.from(new Set(ids))
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function saveStoredUserUnlocks(
+  email: string,
+  freeUnlocks: number,
+  unlockedBandIds: string[]
+): void {
+  const key = getUserUnlockStorageKey(email);
+  if (!key || typeof window === "undefined") return;
+  try {
+    const cleanIds = Array.from(
+      new Set((unlockedBandIds || []).map((id) => String(id).trim()).filter(Boolean))
+    );
+    const cleanCount = Math.max(0, Math.floor(freeUnlocks));
+    localStorage.setItem(
+      key,
+      JSON.stringify({
+        free_unlocks: cleanCount,
+        unlocked_band_ids: cleanIds
+      })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
+}
+
+export function getUserUnlockedBandIds(account?: Partial<UserAccount> | null): string[] {
+  if (!isUserLoggedIn(account)) return [];
+  const merged = new Set<string>();
+  const fromSnake = Array.isArray(account?.unlocked_band_ids) ? account.unlocked_band_ids : [];
+  const fromCamel = Array.isArray(account?.unlockedBandIds) ? account.unlockedBandIds : [];
+  const stored = readStoredUserUnlocks(account?.contactEmail || account?.email);
+
+  for (const id of [...fromSnake, ...fromCamel, ...(stored?.unlocked_band_ids || [])]) {
+    if (typeof id === "string" && id.trim()) {
+      merged.add(id.trim());
+    }
+  }
+  return Array.from(merged);
+}
+
+export function getUserFreeUnlocks(account?: Partial<UserAccount> | null): number {
+  if (!isUserLoggedIn(account)) return 0;
+
+  const unlockedIds = getUserUnlockedBandIds(account);
+  const stored = readStoredUserUnlocks(account?.contactEmail || account?.email);
+
+  const rawCandidates: number[] = [];
+  if (typeof account?.free_unlocks === "number" && !Number.isNaN(account.free_unlocks)) {
+    rawCandidates.push(Math.max(0, Math.floor(account.free_unlocks)));
+  }
+  if (typeof account?.freeUnlocks === "number" && !Number.isNaN(account.freeUnlocks)) {
+    rawCandidates.push(Math.max(0, Math.floor(account.freeUnlocks)));
+  }
+  if (stored && typeof stored.free_unlocks === "number") {
+    rawCandidates.push(Math.max(0, Math.floor(stored.free_unlocks)));
+  }
+
+  if (rawCandidates.length > 0) {
+    // Use the lowest synced count so unlocks consumed in one tab/store aren't inflated by stale defaults
+    return Math.min(...rawCandidates);
+  }
+
+  return Math.max(0, DEFAULT_FREE_UNLOCKS - unlockedIds.length);
+}
+
+export function isBandUnlockedForUser(
+  account?: Partial<UserAccount> | null,
+  bandId?: string | null
+): boolean {
+  if (!isUserLoggedIn(account)) return false;
+  if (isAccessActive(account)) return true;
+  if (!bandId) return false;
+  const cleanId = bandId.trim();
+  if (!cleanId) return false;
+  return getUserUnlockedBandIds(account).includes(cleanId);
+}
+
+export function normalizeUserUnlockFields<T extends Partial<UserAccount>>(account: T): T {
+  const email = account?.contactEmail || account?.email;
+  if (!email) return account;
+  const unlockedIds = getUserUnlockedBandIds(account);
+  const freeUnlocks = getUserFreeUnlocks(account);
+  saveStoredUserUnlocks(email, freeUnlocks, unlockedIds);
+  return {
+    ...account,
+    free_unlocks: freeUnlocks,
+    freeUnlocks,
+    unlocked_band_ids: unlockedIds,
+    unlockedBandIds: unlockedIds
+  };
+}
+
+
 

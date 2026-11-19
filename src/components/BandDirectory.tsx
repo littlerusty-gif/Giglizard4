@@ -22,12 +22,17 @@ import {
   isUserLoggedIn,
   canViewBandContacts,
   getAccessStatusDetails, 
-  maskContactEmail, 
+  maskContactEmail,
+  maskListenLink,
   isBandBanned,
-  isPerpetualPassEmail
+  isPerpetualPassEmail,
+  getUserFreeUnlocks,
+  getUserUnlockedBandIds,
+  saveStoredUserUnlocks,
+  normalizeUserUnlockFields
 } from "../utils/accessControl";
 import { getOwnerBandEdits, getOwnerDeletedBandIds, isEmailAlreadyRegistered, normalizeEmail } from "../utils/directoryStore";
-import { fetchProfiles, profileToAvailableBand, insertProfile, fetchBandsFromDatabase, saveBandToDatabase } from "../lib/supabase";
+import { fetchProfiles, profileToAvailableBand, insertProfile, fetchBandsFromDatabase, saveBandToDatabase, persistUserUnlocksToSupabase } from "../lib/supabase";
 import { updateAndAlphabetizeGenreDropdown, MASTER_GENRES, matchesMasterGenre } from "../utils/genreDropdown";
 import { CONTINENTAL_US_STATES, parseFreeformCityState, POPULAR_NATIONWIDE_HUBS } from "../constants/states";
 
@@ -95,6 +100,13 @@ export default function BandDirectory({
   const [honeypotValue, setHoneypotValue] = useState("");
   const [showPayPalModal, setShowPayPalModal] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginModalMode, setLoginModalMode] = useState<"login" | "signup">("login");
+  const [unlockingBandId, setUnlockingBandId] = useState<string | null>(null);
+  const [localUnlocksOverride, setLocalUnlocksOverride] = useState<{
+    email: string;
+    free_unlocks: number;
+    unlocked_band_ids: string[];
+  } | null>(null);
   const [reviewModalBand, setReviewModalBand] = useState<AvailableBand | null>(null);
   const [reviewsVersion, setReviewsVersion] = useState(0);
 
@@ -137,8 +149,6 @@ export default function BandDirectory({
     (currentUser?.email && isPerpetualPassEmail(currentUser.email)) ||
     currentUser?.isVip
   );
-  const isSubscriptionActive = isAccessActive(currentAccount) || isPerpetualUser || Boolean(currentUser?.is_premium || currentUser?.is_paid);
-  const activeAccess = isLoggedIn && isSubscriptionActive;
   const accessDetails = getAccessStatusDetails(
     currentAccount || (currentUser ? {
       contactEmail: currentUser.email,
@@ -147,9 +157,47 @@ export default function BandDirectory({
       accessExpiresAt: isPerpetualUser ? new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString() : currentUser.access_expires_at
     } : null)
   );
+  const isSubscriptionActive = Boolean(accessDetails.isActive || isPerpetualUser);
+  const activeAccess = isLoggedIn && isSubscriptionActive;
 
   const isLifetimeOwner = Boolean(accessDetails.isPerpetual || isPerpetualUser);
-  const hasActivePass = activeAccess || isLifetimeOwner;
+  const hasActivePass = activeAccess || (isLoggedIn && isLifetimeOwner);
+
+  const effectiveAccount: Partial<UserAccount> | null = currentAccount
+    ? currentAccount
+    : currentUser?.email
+    ? {
+        id: currentUser.id,
+        contactEmail: currentUser.email,
+        email: currentUser.email,
+        name: currentUser.name,
+        role: currentUser.role,
+        type: currentUser.role,
+        isPremium: Boolean(isPerpetualUser || currentUser.is_premium),
+        hasPaidAccess: Boolean(isPerpetualUser || currentUser.is_paid),
+        accessExpiresAt: isPerpetualUser
+          ? new Date(Date.now() + 36500 * 24 * 60 * 60 * 1000).toISOString()
+          : currentUser.access_expires_at,
+        free_unlocks: currentUser.free_unlocks,
+        unlocked_band_ids: currentUser.unlocked_band_ids
+      }
+    : null;
+
+  const userEmailForUnlocks = (effectiveAccount?.contactEmail || effectiveAccount?.email || "").trim().toLowerCase();
+  const mergedAccountForUnlocks =
+    effectiveAccount && localUnlocksOverride && localUnlocksOverride.email === userEmailForUnlocks
+      ? {
+          ...effectiveAccount,
+          free_unlocks: localUnlocksOverride.free_unlocks,
+          freeUnlocks: localUnlocksOverride.free_unlocks,
+          unlocked_band_ids: localUnlocksOverride.unlocked_band_ids,
+          unlockedBandIds: localUnlocksOverride.unlocked_band_ids
+        }
+      : effectiveAccount;
+
+  const freeUnlocks = !isLoggedIn || hasActivePass ? 0 : getUserFreeUnlocks(mergedAccountForUnlocks);
+  const unlockedBandIds = isLoggedIn ? getUserUnlockedBandIds(mergedAccountForUnlocks) : [];
+  const unlockedBandIdsKey = unlockedBandIds.join(",");
 
   // Check if currently logged-in user already has a band profile registered
   const userContactEmail = (currentAccount?.contactEmail || currentUser?.email || currentUser?.contact_email)?.trim().toLowerCase();
@@ -220,19 +268,24 @@ export default function BandDirectory({
     let isMounted = true;
     const fetchBands = async () => {
       let rawApiBands: AvailableBand[] = [];
+      let serverUnlockedIds: string[] = [];
       try {
-        const expiresHeader = currentAccount?.accessExpiresAt || "";
-        const emailHeader = currentAccount?.contactEmail || "";
+        const expiresHeader = currentAccount?.accessExpiresAt || currentUser?.access_expires_at || "";
+        const emailHeader = currentAccount?.contactEmail || currentUser?.email || "";
         const response = await fetch("/api/bands", {
           headers: {
             "x-access-expires-at": expiresHeader,
-            "x-user-email": emailHeader
+            "x-user-email": emailHeader,
+            "x-unlocked-band-ids": unlockedBandIdsKey
           }
         });
         if (response.ok) {
           const data = await response.json();
           if (data.bands && Array.isArray(data.bands)) {
             rawApiBands = data.bands;
+          }
+          if (Array.isArray(data.unlocked_band_ids)) {
+            serverUnlockedIds = data.unlocked_band_ids.map((id: any) => String(id).trim()).filter(Boolean);
           }
         }
       } catch (err) {
@@ -326,31 +379,47 @@ export default function BandDirectory({
           deduplicatedBands.push(b);
         }
 
-        const isUserAuthorized = canViewBandContacts(currentAccount);
-        const processedBands = deduplicatedBands.map((b) => {
+        const isUserAuthorized = canViewBandContacts(currentAccount) || Boolean(isLoggedIn && accessDetails.isActive);
+        const mergedUnlockedSet = new Set<string>([
+          ...unlockedBandIds,
+          ...serverUnlockedIds
+        ]);
+
+        const maskOrEnrichBand = (b: AvailableBand, authorized: boolean, freeUnlocked: boolean): AvailableBand => {
           const sanitizedPhone = sanitizeBandPhoneNumber(b.contactPhone);
           const agency = resolveBandAgency(b);
           const effectiveEmail = agency ? agency.email : b.contactEmail;
           const effectivePhone = agency?.phone || sanitizedPhone;
 
-          if (!isUserAuthorized) {
+          if (!authorized) {
+            const {
+              audioPreviewUrl: _a,
+              spotifyUrl: _s,
+              bandcampUrl: _bc,
+              listenUrl: _lu,
+              primaryLink: _pl,
+              ...safeBand
+            } = b as any;
             return {
-              ...b,
+              ...safeBand,
+              isFreeUnlocked: false,
               hasBookingAgency: Boolean(agency),
               bookingAgency: agency?.agencyName || b.bookingAgency,
               bookingAgentName: agency?.agentName || b.bookingAgentName,
-              bookingAgencyEmail: agency?.email || b.bookingAgencyEmail,
-              bookingAgencyPhone: agency?.phone || b.bookingAgencyPhone,
-              bookingAgencyWebsite: agency?.website || b.bookingAgencyWebsite,
+              bookingAgencyEmail: agency ? maskContactEmail() : undefined,
+              bookingAgencyPhone: undefined,
+              bookingAgencyWebsite: undefined,
               contactPhone: "",
-              contactEmail: "--****",
+              contactEmail: maskContactEmail(),
               website: undefined,
               epkUrl: undefined,
               musicUrl: undefined
             } as AvailableBand;
           }
+
           return {
             ...b,
+            isFreeUnlocked: freeUnlocked,
             hasBookingAgency: Boolean(agency),
             bookingAgency: agency?.agencyName || b.bookingAgency,
             bookingAgentName: agency?.agentName || b.bookingAgentName,
@@ -360,6 +429,15 @@ export default function BandDirectory({
             contactEmail: effectiveEmail,
             contactPhone: effectivePhone
           } as AvailableBand;
+        };
+
+        const processedBands = deduplicatedBands.map((b) => {
+          const isSingleBandUnlocked = isLoggedIn && mergedUnlockedSet.has(String(b.id));
+          return maskOrEnrichBand(
+            b,
+            isUserAuthorized || isSingleBandUnlocked,
+            !isUserAuthorized && isSingleBandUnlocked
+          );
         });
 
         setBands(processedBands);
@@ -373,13 +451,39 @@ export default function BandDirectory({
 
     const onBandsUpdated = (e?: any) => {
       if (e?.detail) {
-        const updatedEntry = e.detail as AvailableBand;
+        const rawEntry = e.detail as AvailableBand;
+        const isSingleBandUnlocked = isLoggedIn && unlockedBandIds.includes(String(rawEntry.id));
+        const authorizedNow = canViewBandContacts(currentAccount) || Boolean(isLoggedIn && accessDetails.isActive) || isSingleBandUnlocked;
+        const agency = resolveBandAgency(rawEntry);
+        const updatedEntry: AvailableBand = authorizedNow
+          ? {
+              ...rawEntry,
+              isFreeUnlocked: !(canViewBandContacts(currentAccount) || Boolean(isLoggedIn && accessDetails.isActive)) && isSingleBandUnlocked
+            }
+          : {
+              ...(rawEntry as any),
+              isFreeUnlocked: false,
+              hasBookingAgency: Boolean(agency),
+              bookingAgency: agency?.agencyName || rawEntry.bookingAgency,
+              bookingAgentName: agency?.agentName || rawEntry.bookingAgentName,
+              bookingAgencyEmail: agency ? maskContactEmail() : undefined,
+              bookingAgencyPhone: undefined,
+              bookingAgencyWebsite: undefined,
+              contactPhone: "",
+              contactEmail: maskContactEmail(),
+              website: undefined,
+              epkUrl: undefined,
+              musicUrl: undefined,
+              audioPreviewUrl: undefined,
+              spotifyUrl: undefined,
+              bandcampUrl: undefined
+            };
         setBands((prev) => {
           const key = updatedEntry.name?.trim().toLowerCase();
           const emailKey = updatedEntry.contactEmail?.trim().toLowerCase();
           const filtered = prev.filter((b) => 
             b.name?.trim().toLowerCase() !== key && 
-            (!emailKey || !b.contactEmail || b.contactEmail.trim().toLowerCase() !== emailKey) &&
+            (!emailKey || emailKey === "--****" || !b.contactEmail || b.contactEmail.trim().toLowerCase() !== emailKey) &&
             b.id !== updatedEntry.id
           );
           return [updatedEntry, ...filtered];
@@ -404,7 +508,12 @@ export default function BandDirectory({
     currentAccount?.musicUrl,
     currentAccount?.bio,
     currentAccount?.genre,
-    currentAccount?.city
+    currentAccount?.city,
+    currentUser?.email,
+    currentUser?.access_expires_at,
+    currentUser?.isVip,
+    unlockedBandIdsKey,
+    freeUnlocks
   ]);
 
   const handleOpenPayment = () => {
@@ -412,6 +521,149 @@ export default function BandDirectory({
       onTriggerUpgrade();
     } else {
       setShowPayPalModal(true);
+    }
+  };
+
+  const handleUnlockBandWithFreeCredit = async (band: AvailableBand) => {
+    if (!isLoggedIn) {
+      setLoginModalMode("signup");
+      setShowLoginModal(true);
+      return;
+    }
+
+    if (hasActivePass || unlockedBandIds.includes(String(band.id))) {
+      return;
+    }
+
+    if (freeUnlocks <= 0) {
+      handleOpenPayment();
+      return;
+    }
+
+    if (unlockingBandId === band.id) return;
+    setUnlockingBandId(band.id);
+
+    const cleanEmail = (effectiveAccount?.contactEmail || effectiveAccount?.email || "").trim().toLowerCase();
+    let nextFree = Math.max(0, freeUnlocks - 1);
+    let nextUnlockedIds = Array.from(new Set([...unlockedBandIds, String(band.id)]));
+    let serverBand: AvailableBand | null = null;
+
+    try {
+      const response = await fetch("/api/user/unlock-band", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: cleanEmail,
+          userId: effectiveAccount?.id || currentUser?.id,
+          bandId: band.id,
+          unlockedBandIds
+        })
+      });
+
+      if (response.status === 402) {
+        const errPayload = await response.json().catch(() => ({}));
+        const syncedIds = Array.isArray(errPayload.unlocked_band_ids)
+          ? errPayload.unlocked_band_ids.map((id: any) => String(id).trim()).filter(Boolean)
+          : unlockedBandIds;
+        saveStoredUserUnlocks(cleanEmail, 0, syncedIds);
+        setLocalUnlocksOverride({
+          email: cleanEmail,
+          free_unlocks: 0,
+          unlocked_band_ids: syncedIds
+        });
+        if (currentAccount && onUpdateAccount) {
+          onUpdateAccount({
+            ...currentAccount,
+            free_unlocks: 0,
+            freeUnlocks: 0,
+            unlocked_band_ids: syncedIds,
+            unlockedBandIds: syncedIds
+          });
+        }
+        setUnlockingBandId(null);
+        handleOpenPayment();
+        return;
+      }
+
+      if (response.ok) {
+        const data = await response.json();
+        if (typeof data.free_unlocks === "number") {
+          nextFree = Math.max(0, Math.floor(data.free_unlocks));
+        }
+        if (Array.isArray(data.unlocked_band_ids)) {
+          nextUnlockedIds = Array.from(
+            new Set(data.unlocked_band_ids.map((id: any) => String(id).trim()).filter(Boolean))
+          );
+        }
+        if (data.band) {
+          serverBand = data.band;
+        }
+      }
+    } catch (err) {
+      console.warn("[BandDirectory] /api/user/unlock-band fallback:", err);
+    }
+
+    try {
+      saveStoredUserUnlocks(cleanEmail, nextFree, nextUnlockedIds);
+      setLocalUnlocksOverride({
+        email: cleanEmail,
+        free_unlocks: nextFree,
+        unlocked_band_ids: nextUnlockedIds
+      });
+
+      persistUserUnlocksToSupabase({
+        email: cleanEmail,
+        freeUnlocks: nextFree,
+        unlockedBandIds: nextUnlockedIds,
+        userId: effectiveAccount?.id || currentUser?.id
+      }).catch(() => {});
+
+      if (onUpdateAccount) {
+        const baseAcc: UserAccount = currentAccount || {
+          id: effectiveAccount?.id,
+          type: (effectiveAccount?.type as any) || "Band",
+          role: effectiveAccount?.role,
+          name: effectiveAccount?.name || "Musician",
+          city: effectiveAccount?.city || "Touring USA",
+          contactEmail: cleanEmail,
+          email: cleanEmail,
+          isPremium: false,
+          hasPaidAccess: false
+        };
+        onUpdateAccount({
+          ...baseAcc,
+          free_unlocks: nextFree,
+          freeUnlocks: nextFree,
+          unlocked_band_ids: nextUnlockedIds,
+          unlockedBandIds: nextUnlockedIds
+        });
+      }
+
+      const fallbackStatic = INITIAL_AVAILABLE_BANDS.find((item) => String(item.id) === String(band.id));
+      const resolvedSource = serverBand || fallbackStatic || band;
+      const agency = resolveBandAgency(resolvedSource);
+      const unmaskedBand: AvailableBand = {
+        ...resolvedSource,
+        isFreeUnlocked: true,
+        hasBookingAgency: Boolean(agency),
+        bookingAgency: agency?.agencyName || resolvedSource.bookingAgency,
+        bookingAgentName: agency?.agentName || resolvedSource.bookingAgentName,
+        bookingAgencyEmail: agency?.email || resolvedSource.bookingAgencyEmail,
+        bookingAgencyPhone: agency?.phone || resolvedSource.bookingAgencyPhone,
+        bookingAgencyWebsite: agency?.website || resolvedSource.bookingAgencyWebsite,
+        contactEmail: agency ? agency.email : resolvedSource.contactEmail,
+        contactPhone: agency?.phone || sanitizeBandPhoneNumber(resolvedSource.contactPhone)
+      };
+
+      setBands((prev) => prev.map((item) => (String(item.id) === String(band.id) ? unmaskedBand : item)));
+      setSuccessMsg(
+        `🔓 Unlocked "${band.name}"! Booking Email and Listen / EPK Link are now unmasked (${nextFree} Free ${
+          nextFree === 1 ? "Unlock" : "Unlocks"
+        } Left).`
+      );
+      setTimeout(() => setSuccessMsg(""), 5000);
+    } finally {
+      setUnlockingBandId(null);
     }
   };
 
@@ -632,11 +884,11 @@ export default function BandDirectory({
               <div className="flex items-center gap-2">
                 <span className="inline-block w-2.5 h-2.5 rounded-full bg-indigo-400 animate-pulse"></span>
                 <h3 className="text-sm font-black text-indigo-300 tracking-tight">
-                  🔒 Account Sign In Required — Band Contacts, EPKs & Listen Links Protected
+                  🔒 Sign Up Free to Get 2 Free Band Unlocks — Contacts & Listen Links
                 </h3>
               </div>
               <p className="text-xs text-slate-350 font-medium mt-0.5">
-                Band contact info, press kits, and audio links are hidden for non-logged-in users. Only paid subscribers with up-to-date subscriptions who are logged into their account can view band contact info, EPK, and Listen links.
+                Band booking emails and listen / EPK links stay masked together until unlocked. Sign up free to get 2 Free Unlocks for any band (which stay unmasked on your account even without a $9.99 pass), or get unlimited access across all {bands.length} bands with the 30-Day Pass ($9.99).
               </p>
             </div>
           </div>
@@ -644,16 +896,31 @@ export default function BandDirectory({
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto flex-shrink-0">
             <button
               type="button"
-              onClick={() => setShowLoginModal(true)}
+              onClick={() => {
+                setLoginModalMode("signup");
+                setShowLoginModal(true);
+              }}
+              className="flex-1 sm:flex-initial bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 text-xs font-black py-2.5 px-4 rounded-xl cursor-pointer transition-all shadow-md flex items-center justify-center gap-1.5"
+              id="btn-banner-signup-free"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Sign Up (2 Free Unlocks)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLoginModalMode("login");
+                setShowLoginModal(true);
+              }}
               className="flex-1 sm:flex-initial bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-black py-2.5 px-4 rounded-xl cursor-pointer transition-all shadow-md flex items-center justify-center gap-1.5"
               id="btn-banner-login"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Sign In to Account</span>
+              <span>Sign In</span>
             </button>
             <button
               type="button"
-              onClick={() => setShowPayPalModal(true)}
+              onClick={handleOpenPayment}
               className="flex-1 sm:flex-initial bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 text-xs font-black py-2.5 px-4 rounded-xl cursor-pointer transition-all shadow-md flex items-center justify-center gap-1.5"
               id="btn-banner-get-pass"
             >
@@ -707,19 +974,31 @@ export default function BandDirectory({
         >
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center flex-shrink-0 shadow-sm">
-              <Lock className="w-5 h-5 text-slate-950" />
+              {freeUnlocks > 0 ? (
+                <Sparkles className="w-5 h-5 text-slate-950" />
+              ) : (
+                <Lock className="w-5 h-5 text-slate-950" />
+              )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <span className="inline-block w-2.5 h-2.5 rounded-full bg-amber-400"></span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-block w-2.5 h-2.5 rounded-full ${freeUnlocks > 0 ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`}></span>
                 <h3 className="text-sm font-black text-amber-300 tracking-tight">
-                  {accessDetails.isExpired 
-                    ? "🔒 30-Day Access Expired — Renew for $9.99 to Unlock Contacts, EPK & Audio" 
-                    : "🔒 Free Tier (Contacts, EPK & Listen Links Masked) — Active Paid Subscription Required"}
+                  {freeUnlocks > 0
+                    ? `🔓 ${freeUnlocks} of 2 Free Unlocks Remaining — Click Any Band Card to Unmask Email & Listen Link`
+                    : accessDetails.isExpired
+                    ? "🔒 30-Day Access Expired & 0 Free Unlocks Left — Upgrade for Unlimited Contacts & Links"
+                    : "🔒 0 Free Unlocks Remaining — Unlock All Access ($9.99 / 30-Day Pass)"}
                 </h3>
+                <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full text-[10px] font-black">
+                  {freeUnlocks} Free Left • {unlockedBandIds.length} Unlocked
+                </span>
               </div>
               <p className="text-xs text-slate-350 font-medium mt-0.5">
-                Logged in as <span className="font-mono text-amber-200">{currentAccount?.contactEmail}</span>. An active paid subscription is required to unmask band booking emails, view press kits, and listen to music.
+                Logged in as <span className="font-mono text-amber-200">{effectiveAccount?.contactEmail}</span>.{" "}
+                {unlockedBandIds.length > 0
+                  ? `${unlockedBandIds.length} unlocked ${unlockedBandIds.length === 1 ? "band has" : "bands have"} unmasked Booking Email & Listen / EPK Links saved to your account even without a $9.99 pass.`
+                  : "Use your 2 Free Unlocks to immediately unmask both Booking Email and Listen / EPK Link on any 2 bands — unlocked bands stay visible even without a $9.99 pass."}
               </p>
             </div>
           </div>
@@ -737,12 +1016,12 @@ export default function BandDirectory({
             )}
             <button
               type="button"
-              onClick={() => setShowPayPalModal(true)}
+              onClick={handleOpenPayment}
               className="bg-amber-400 hover:bg-amber-300 active:scale-95 text-slate-950 text-xs font-black py-2.5 px-5 rounded-xl cursor-pointer transition-all shadow-md flex items-center gap-1.5"
               id="btn-renew-30-day-pass"
             >
               <Lock className="w-4 h-4" />
-              <span>{accessDetails.isExpired ? "Renew Pass ($9.99)" : "Unlock 30-Day Pass ($9.99)"}</span>
+              <span>🔒 Unlock All Access ($9.99 / 30-Day Pass)</span>
             </button>
           </div>
         </div>
@@ -1087,6 +1366,8 @@ export default function BandDirectory({
         {paginatedBands.map((band) => {
           const stats = getRatingStats(band.id, band.name, "band");
           const agencyInfo = resolveBandAgency(band);
+          const isBandFreeUnlocked = isLoggedIn && (unlockedBandIds.includes(String(band.id)) || Boolean(band.isFreeUnlocked));
+          const isBandUnlocked = hasActivePass || isBandFreeUnlocked;
 
           return (
           <div
@@ -1186,156 +1467,137 @@ export default function BandDirectory({
                 "{band.bio}"
               </p>
 
-              {/* Primary Band Link (Bandcamp, EPK, Website, Spotify, etc.) */}
-              {/* IMPORTANT: Gated when not subscribed because Bandcamp, Spotify, YouTube, EPKs, and websites expose direct contact info! */}
-              {(() => {
-                const primaryLink = resolveMostRelevantBandLink(band);
-                // When contact info is hidden, ALL external links must be gated to prevent bypassing paywall
-                const isLinkGated = !(isLoggedIn && isSubscriptionActive);
-
-                return (
-                  <div className="p-2.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-xl border border-slate-200/80">
-                    {isLinkGated ? (
-                      /* Protected Link State: Free users cannot click out to harvest contact info on Bandcamp/Websites */
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDrmWarning(
-                            `🔒 Artist Privacy Protected: Direct ${primaryLink.badge} and external streaming links contain booking emails and contact forms. Active 30-day pass ($9.99) required to access.`
-                          );
-                          if (!isLoggedIn) {
-                            setShowLoginModal(true);
-                          } else {
-                            setShowPayPalModal(true);
-                          }
-                        }}
-                        className="w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-xs font-black shadow-2xs transition-all cursor-pointer bg-slate-100 hover:bg-amber-50 text-slate-700 hover:text-amber-950 border border-slate-300 hover:border-amber-300 group"
-                        title={`External ${primaryLink.badge} link is protected to prevent scraper harvesting`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Lock className="w-3.5 h-3.5 text-amber-500 shrink-0 group-hover:scale-110 transition-transform" />
-                          <span className="truncate">{primaryLink.actionText}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-amber-100 text-amber-900 border-amber-300 font-mono">
-                            🔒 Pass Required
-                          </span>
-                        </div>
-                      </button>
-                    ) : agencyInfo ? (
-                      /* Unlocked Agency-Represented Band: Primary is official agency booking portal; secondary is streaming music marked as agency routed */
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-[11px] bg-amber-100/70 border border-amber-300/80 px-2.5 py-1.5 rounded-lg text-amber-950">
-                          <span className="font-extrabold flex items-center gap-1.5 truncate">
-                            <Building className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                            <span className="truncate">Booking Managed by {agencyInfo.agencyName}</span>
-                          </span>
-                          <span className="text-[9.5px] font-mono font-black text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded shrink-0">
-                            Agency Routed
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <a
-                            href={agencyInfo.website || "https://intrepidartists.com"}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-black bg-amber-600 hover:bg-amber-500 text-white shadow-2xs transition-all cursor-pointer"
-                            title={`Visit official agency booking desk at ${agencyInfo.agencyName}`}
-                          >
-                            <div className="flex items-center gap-1.5 truncate">
-                              <Building className="w-3.5 h-3.5 shrink-0" />
-                              <span className="truncate">Agency Booking Desk</span>
-                            </div>
-                            <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-80" />
-                          </a>
-                          <a
-                            href={primaryLink.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-2xs transition-all cursor-pointer"
-                            title={`Listen to ${band.name} on ${primaryLink.badge} (Note: Direct bookings must go through ${agencyInfo.agencyName})`}
-                          >
-                            <div className="flex items-center gap-1.5 truncate">
-                              <Headphones className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                              <span className="truncate">{primaryLink.actionText}</span>
-                            </div>
-                            <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
-                              Music Only
-                            </span>
-                          </a>
-                        </div>
-                      </div>
-                    ) : (
-                      /* Unlocked Independent / DIY Band Link */
-                      <a
-                        href={primaryLink.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-xs font-black shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
-                          primaryLink.type === "epk"
-                            ? "text-indigo-950 bg-white hover:bg-indigo-50/90 border border-indigo-200"
-                            : primaryLink.type === "website"
-                            ? "text-blue-950 bg-white hover:bg-blue-50/90 border border-blue-200"
-                            : primaryLink.type === "bandcamp"
-                            ? "text-cyan-950 bg-cyan-50/90 hover:bg-cyan-100/80 border border-cyan-300"
-                            : primaryLink.type === "youtube"
-                            ? "text-rose-950 bg-rose-50/90 hover:bg-rose-100/80 border border-rose-300"
-                            : primaryLink.type === "spotify"
-                            ? "text-emerald-950 bg-emerald-50/90 hover:bg-emerald-100/80 border border-emerald-300"
-                            : primaryLink.type === "facebook"
-                            ? "text-sky-950 bg-sky-50/90 hover:bg-sky-100/80 border border-sky-300"
-                            : "text-slate-900 bg-white hover:bg-slate-50 border border-slate-200"
-                        }`}
-                        title={`Open ${band.name}'s verified ${primaryLink.badge}`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {primaryLink.type === "epk" && <FileText className="w-4 h-4 text-indigo-600 shrink-0" />}
-                          {primaryLink.type === "website" && <Globe className="w-4 h-4 text-blue-600 shrink-0" />}
-                          {primaryLink.type === "bandcamp" && <Headphones className="w-4 h-4 text-cyan-700 shrink-0" />}
-                          {primaryLink.type === "youtube" && <Video className="w-4 h-4 text-rose-600 shrink-0" />}
-                          {primaryLink.type === "spotify" && <Music className="w-4 h-4 text-emerald-600 shrink-0" />}
-                          {primaryLink.type === "facebook" && <Users className="w-4 h-4 text-sky-600 shrink-0" />}
-                          {primaryLink.type === "other" && <ExternalLink className="w-4 h-4 text-slate-600 shrink-0" />}
-                          <span className="truncate">{primaryLink.actionText}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                            primaryLink.type === "epk"
-                              ? "bg-indigo-100 text-indigo-800 border-indigo-200"
-                              : primaryLink.type === "website"
-                              ? "bg-blue-100 text-blue-800 border-blue-200"
-                              : primaryLink.type === "bandcamp"
-                              ? "bg-cyan-200/70 text-cyan-900 border-cyan-300"
-                              : primaryLink.type === "youtube"
-                              ? "bg-rose-200/70 text-rose-900 border-rose-300"
-                              : primaryLink.type === "spotify"
-                              ? "bg-emerald-200/70 text-emerald-900 border-emerald-300"
-                              : primaryLink.type === "facebook"
-                              ? "bg-sky-200/70 text-sky-900 border-sky-300"
-                              : "bg-slate-100 text-slate-700 border-slate-200"
-                          }`}>
-                            {primaryLink.badge} ✓
-                          </span>
-                          <ExternalLink className="w-3.5 h-3.5 opacity-60" />
-                        </div>
-                      </a>
-                    )}
-                  </div>
-                );
-              })()}
-
-              {/* Band Contact Gating & Booking Agency Routing */}
-              {isLoggedIn && isSubscriptionActive ? (
-                /* Active Access State: Clear unmasked contact details exclusively for paid subscribers */
+              {/* Band Contact, Listen Links & Booking Agency Paywall Gating */}
+              {isBandUnlocked ? (
+                /* Active Access or Free-Unlocked State: Clear unmasked listen links & contact details */
                 <div 
                   className="space-y-3 pt-1 select-none"
                   onCopy={(e) => {
                     e.preventDefault();
-                    setDrmWarning("🔒 Content Protected: Copying is restricted. Direct online view is enabled with your active subscription.");
+                    setDrmWarning("🔒 Content Protected: Copying is restricted. Direct online view is enabled with your account.");
                     setTimeout(() => setDrmWarning(""), 4000);
                   }}
                   onContextMenu={(e) => e.preventDefault()}
                 >
+                  {!hasActivePass && isBandFreeUnlocked && (
+                    <div
+                      className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 text-[11px] font-black"
+                      id={`badge-free-unlocked-${band.id}`}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Unlocked with Free Unlock — Email & Listen Link Visible</span>
+                      </span>
+                      <span className="text-[10px] font-mono bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded">
+                        Unlocked
+                      </span>
+                    </div>
+                  )}
+                  {/* Unlocked Primary Band Listen / EPK / Website Link */}
+                  {(() => {
+                    const primaryLink = resolveMostRelevantBandLink(band, { isUnlocked: true });
+                    return (
+                      <div className="p-2.5 bg-gradient-to-r from-slate-50 to-indigo-50/40 rounded-xl border border-slate-200/80">
+                        {agencyInfo ? (
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-[11px] bg-amber-100/70 border border-amber-300/80 px-2.5 py-1.5 rounded-lg text-amber-950">
+                              <span className="font-extrabold flex items-center gap-1.5 truncate">
+                                <Building className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                                <span className="truncate">Booking Managed by {agencyInfo.agencyName}</span>
+                              </span>
+                              <span className="text-[9.5px] font-mono font-black text-amber-900 bg-amber-200/90 px-1.5 py-0.5 rounded shrink-0">
+                                Agency Routed
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <a
+                                href={agencyInfo.website || "https://intrepidartists.com"}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-black bg-amber-600 hover:bg-amber-500 text-white shadow-2xs transition-all cursor-pointer"
+                                title={`Visit official agency booking desk at ${agencyInfo.agencyName}`}
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Building className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">Agency Booking Desk</span>
+                                </div>
+                                <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                              </a>
+                              <a
+                                href={primaryLink.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-bold bg-white hover:bg-slate-50 text-slate-800 border border-slate-200 shadow-2xs transition-all cursor-pointer"
+                                title={`Listen to ${band.name} on ${primaryLink.badge} (Note: Direct bookings must go through ${agencyInfo.agencyName})`}
+                              >
+                                <div className="flex items-center gap-1.5 truncate">
+                                  <Headphones className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                                  <span className="truncate">{primaryLink.actionText}</span>
+                                </div>
+                                <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded shrink-0">
+                                  Music Only
+                                </span>
+                              </a>
+                            </div>
+                          </div>
+                        ) : (
+                          <a
+                            href={primaryLink.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`w-full inline-flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-lg text-xs font-black shadow-2xs hover:shadow-xs transition-all cursor-pointer ${
+                              primaryLink.type === "epk"
+                                ? "text-indigo-950 bg-white hover:bg-indigo-50/90 border border-indigo-200"
+                                : primaryLink.type === "website"
+                                ? "text-blue-950 bg-white hover:bg-blue-50/90 border border-blue-200"
+                                : primaryLink.type === "bandcamp"
+                                ? "text-cyan-950 bg-cyan-50/90 hover:bg-cyan-100/80 border border-cyan-300"
+                                : primaryLink.type === "youtube"
+                                ? "text-rose-950 bg-rose-50/90 hover:bg-rose-100/80 border border-rose-300"
+                                : primaryLink.type === "spotify"
+                                ? "text-emerald-950 bg-emerald-50/90 hover:bg-emerald-100/80 border border-emerald-300"
+                                : primaryLink.type === "facebook"
+                                ? "text-sky-950 bg-sky-50/90 hover:bg-sky-100/80 border border-sky-300"
+                                : "text-slate-900 bg-white hover:bg-slate-50 border border-slate-200"
+                            }`}
+                            title={`Open ${band.name}'s verified ${primaryLink.badge}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              {primaryLink.type === "epk" && <FileText className="w-4 h-4 text-indigo-600 shrink-0" />}
+                              {primaryLink.type === "website" && <Globe className="w-4 h-4 text-blue-600 shrink-0" />}
+                              {primaryLink.type === "bandcamp" && <Headphones className="w-4 h-4 text-cyan-700 shrink-0" />}
+                              {primaryLink.type === "youtube" && <Video className="w-4 h-4 text-rose-600 shrink-0" />}
+                              {primaryLink.type === "spotify" && <Music className="w-4 h-4 text-emerald-600 shrink-0" />}
+                              {primaryLink.type === "facebook" && <Users className="w-4 h-4 text-sky-600 shrink-0" />}
+                              {primaryLink.type === "other" && <ExternalLink className="w-4 h-4 text-slate-600 shrink-0" />}
+                              <span className="truncate">{primaryLink.actionText}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                                primaryLink.type === "epk"
+                                  ? "bg-indigo-100 text-indigo-800 border-indigo-200"
+                                  : primaryLink.type === "website"
+                                  ? "bg-blue-100 text-blue-800 border-blue-200"
+                                  : primaryLink.type === "bandcamp"
+                                  ? "bg-cyan-200/70 text-cyan-900 border-cyan-300"
+                                  : primaryLink.type === "youtube"
+                                  ? "bg-rose-200/70 text-rose-900 border-rose-300"
+                                  : primaryLink.type === "spotify"
+                                  ? "bg-emerald-200/70 text-emerald-900 border-emerald-300"
+                                  : primaryLink.type === "facebook"
+                                  ? "bg-sky-200/70 text-sky-900 border-sky-300"
+                                  : "bg-slate-100 text-slate-700 border-slate-200"
+                              }`}>
+                                {primaryLink.badge} ✓
+                              </span>
+                              <ExternalLink className="w-3.5 h-3.5 opacity-60" />
+                            </div>
+                          </a>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {agencyInfo ? (
                     /* CASE A: Band is represented by a Booking Agency like Intrepid Artists */
                     <div className="bg-amber-50/90 p-3.5 rounded-xl text-xs space-y-3 border border-amber-300/80 shadow-2xs">
@@ -1432,8 +1694,16 @@ export default function BandDirectory({
                   </div>
                 </div>
               ) : (
-                /* Locked/Masked Contact State: Only paywall banner is shown for non-logged-in or non-subscribers */
-                <div className="space-y-3 pt-2 select-none" onContextMenu={(e) => e.preventDefault()}>
+                /* Locked/Masked Contact & Listen Link State: Treated identically behind the paywall for non-logged-in or non-subscribers */
+                <div
+                  className="space-y-3 pt-2 select-none"
+                  onCopy={(e) => {
+                    e.preventDefault();
+                    setDrmWarning("🔒 Content Protected: Contact info and listen links are masked until an active 30-day subscription.");
+                    setTimeout(() => setDrmWarning(""), 4000);
+                  }}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
                   <div className="bg-slate-900/95 p-3.5 rounded-xl text-xs space-y-2.5 border border-slate-800">
                     <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 text-[10px] uppercase font-bold text-amber-400">
                       <span className="flex items-center gap-1">
@@ -1450,26 +1720,87 @@ export default function BandDirectory({
                     <p className="text-[11px] text-slate-300 leading-normal">
                       {agencyInfo ? (
                         <>
-                          <strong>{band.name}</strong> is managed by <strong>{agencyInfo.agencyName}</strong>. Official agency booking agent email and phone contacts are protected. Active 30-day pass required to unmask agency booking desk.
+                          <strong>{band.name}</strong> is managed by <strong>{agencyInfo.agencyName}</strong>. Official agency booking emails, EPKs, and listen links are protected because external artist pages include booking contacts. Active 30-day pass required to unmask.
                         </>
                       ) : !isLoggedIn ? (
-                        "Band contact info is hidden for users who are not logged in. Log into an account with an active paid subscription to view." 
+                        "Band contact info and listen links are hidden for users who are not logged in, as most music links include booking contacts. Log into an account with an active paid subscription to view." 
                       ) : (
-                        "Band booking emails are hidden. Active paid subscription required to unmask contacts."
+                        "Band booking emails and listen links are hidden because most streaming/EPK pages expose booking contacts. Active paid subscription required to unmask."
                       )}
                     </p>
 
-                    <div className="flex items-center justify-between pt-0.5">
-                      <span className="text-[11px] font-medium text-slate-400">
-                        {agencyInfo ? "Agency Booking Email:" : "Booking Email:"}
-                      </span>
-                      <span className="font-mono text-slate-300 font-bold bg-slate-950 px-2 py-0.5 rounded border border-slate-800 text-[11px]">
-                        {agencyInfo ? `••••••••@${agencyInfo.email.split('@')[1] || 'agency.com'}` : "--****"}
-                      </span>
+                    <div className="space-y-1.5 pt-0.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                          <Mail className="w-3 h-3 text-amber-400/80" />
+                          {agencyInfo ? "Agency Booking Email:" : "Booking Email:"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isLoggedIn) {
+                              setLoginModalMode("signup");
+                              setShowLoginModal(true);
+                            } else if (freeUnlocks > 0) {
+                              handleUnlockBandWithFreeCredit(band);
+                            } else {
+                              setDrmWarning(
+                                "🔒 0 Free Unlocks Remaining: Unlock all 1,650+ band emails & listen links with the 30-Day Pass ($9.99)."
+                              );
+                              handleOpenPayment();
+                            }
+                          }}
+                          className="font-mono text-slate-300 font-bold bg-slate-950 hover:border-amber-400/60 px-2 py-0.5 rounded border border-slate-800 text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                          title={
+                            !isLoggedIn
+                              ? "Sign up free to get 2 Free Unlocks for Booking Email & Listen / EPK Link"
+                              : freeUnlocks > 0
+                              ? `Use 1 Free Unlock (${freeUnlocks} left) to unmask Booking Email & Listen / EPK Link`
+                              : "Unlock all access ($9.99 / 30-Day Pass)"
+                          }
+                        >
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>{maskContactEmail()}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
+                          <Headphones className="w-3 h-3 text-amber-400/80" />
+                          Listen / EPK Link:
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!isLoggedIn) {
+                              setLoginModalMode("signup");
+                              setShowLoginModal(true);
+                            } else if (freeUnlocks > 0) {
+                              handleUnlockBandWithFreeCredit(band);
+                            } else {
+                              setDrmWarning(
+                                "🔒 0 Free Unlocks Remaining: Unlock all 1,650+ band listen links & EPKs with the 30-Day Pass ($9.99)."
+                              );
+                              handleOpenPayment();
+                            }
+                          }}
+                          className="font-mono text-slate-300 font-bold bg-slate-950 hover:border-amber-400/60 px-2 py-0.5 rounded border border-slate-800 text-[11px] inline-flex items-center gap-1 cursor-pointer transition-colors"
+                          title={
+                            !isLoggedIn
+                              ? "Sign up free to get 2 Free Unlocks for Booking Email & Listen / EPK Link"
+                              : freeUnlocks > 0
+                              ? `Use 1 Free Unlock (${freeUnlocks} left) to unmask Booking Email & Listen / EPK Link`
+                              : "Unlock all access ($9.99 / 30-Day Pass)"
+                          }
+                        >
+                          <Lock className="w-2.5 h-2.5 text-amber-400" />
+                          <span>{maskListenLink()}</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Actions row: Rate Band + Sign In or Renew pass */}
+                  {/* Actions row: Rate Band + 2 Free Unlocks / Pass CTA */}
                   <div className="flex flex-col gap-2">
                     <button
                       type="button"
@@ -1481,35 +1812,39 @@ export default function BandDirectory({
                     </button>
 
                     {!isLoggedIn ? (
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShowLoginModal(true)}
-                          className="w-full py-2.5 px-2 text-xs font-black rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
-                          id={`btn-login-to-view-${band.id}`}
-                        >
-                          <LogIn className="w-3.5 h-3.5" />
-                          <span>Sign In</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowPayPalModal(true)}
-                          className="w-full py-2.5 px-2 text-xs font-black rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
-                          id={`btn-unlock-band-${band.id}`}
-                        >
-                          <Lock className="w-3.5 h-3.5" />
-                          <span>Get Pass ($9.99)</span>
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginModalMode("signup");
+                          setShowLoginModal(true);
+                        }}
+                        className="w-full py-2.5 px-3 text-xs font-black rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-98 text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                        id={`btn-unlock-band-${band.id}`}
+                      >
+                        <span>🔒 Unlock Contacts & Links (2 Free on Signup)</span>
+                      </button>
+                    ) : freeUnlocks > 0 ? (
+                      <button
+                        type="button"
+                        disabled={unlockingBandId === band.id}
+                        onClick={() => handleUnlockBandWithFreeCredit(band)}
+                        className="w-full py-2.5 px-3 text-xs font-black rounded-xl bg-emerald-500 hover:bg-emerald-400 active:scale-98 disabled:opacity-60 text-slate-950 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                        id={`btn-unlock-band-${band.id}`}
+                      >
+                        <span>
+                          {unlockingBandId === band.id
+                            ? "Unlocking..."
+                            : `🔒 Unlock Contacts & Links (${freeUnlocks} Free Left)`}
+                        </span>
+                      </button>
                     ) : (
                       <button
                         type="button"
-                        onClick={() => setShowPayPalModal(true)}
-                        className="w-full py-2.5 px-3 text-xs font-black rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 transition-all cursor-pointer flex items-center justify-center gap-2 shadow-sm"
+                        onClick={handleOpenPayment}
+                        className="w-full py-2.5 px-3 text-xs font-black rounded-xl bg-amber-400 hover:bg-amber-300 active:scale-98 text-slate-950 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
                         id={`btn-unlock-band-${band.id}`}
                       >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>{accessDetails.isExpired ? "Renew 30-Day Pass ($9.99)" : "Unlock 30-Day Pass ($9.99)"}</span>
+                        <span>🔒 Unlock All Access ($9.99 / 30-Day Pass)</span>
                       </button>
                     )}
                   </div>
@@ -1606,15 +1941,17 @@ export default function BandDirectory({
       {/* User Login Modal */}
       <UserLoginModal
         isOpen={showLoginModal}
+        initialMode={loginModalMode}
         onClose={() => setShowLoginModal(false)}
         onLoginSuccess={(loggedAccount) => {
+          const normalizedAccount = normalizeUserUnlockFields(loggedAccount);
           if (onUpdateAccount) {
-            onUpdateAccount(loggedAccount);
+            onUpdateAccount(normalizedAccount);
           }
-          setSuccessMsg(`✅ Welcome back, ${loggedAccount.name}! Account connected.`);
+          setSuccessMsg(`✅ Welcome back, ${normalizedAccount.name}! Account connected.`);
           setTimeout(() => setSuccessMsg(""), 4000);
         }}
-        onOpenCheckout={() => setShowPayPalModal(true)}
+        onOpenCheckout={handleOpenPayment}
       />
 
       {/* Integrated PayPal Access Modal */}

@@ -290,31 +290,6 @@ export default function Footer({
               </>
             )}
 
-            <a
-              href="/vs/sonicbids"
-              onClick={(e) => { e.preventDefault(); if (onOpenCompare) onOpenCompare(); }}
-              className="text-slate-500 hover:text-indigo-300 hover:underline transition-colors cursor-pointer py-1 px-1.5 text-[11px]"
-            >
-              vs Sonicbids
-            </a>
-            <span className="text-slate-800 hidden sm:inline">•</span>
-            <a
-              href="/vs/prism-fm"
-              onClick={(e) => { e.preventDefault(); if (onOpenCompare) onOpenCompare(); }}
-              className="text-slate-500 hover:text-indigo-300 hover:underline transition-colors cursor-pointer py-1 px-1.5 text-[11px]"
-            >
-              vs Prism.fm
-            </a>
-            <span className="text-slate-800 hidden sm:inline">•</span>
-            <a
-              href="/vs/gigwell"
-              onClick={(e) => { e.preventDefault(); if (onOpenCompare) onOpenCompare(); }}
-              className="text-slate-500 hover:text-indigo-300 hover:underline transition-colors cursor-pointer py-1 px-1.5 text-[11px]"
-            >
-              vs Gigwell
-            </a>
-            <span className="text-slate-700 hidden sm:inline">•</span>
-
             {onOpenGuarantee && (
               <>
                 <button

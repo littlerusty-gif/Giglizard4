@@ -116,13 +116,13 @@ export const SEO_CONFIG: Record<string, SeoMetadata> = {
     canonicalUrl: "https://www.giglizard.us/faq"
   },
   articles: {
-    title: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
+    title: "Tour Advice Playbooks & Road Wisdom (20 Articles) | GigLizard",
     description: "Actionable tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, soundcheck etiquette, and deal negotiation.",
     keywords: "diy tour advice, band touring articles, how to route band tour, stage plot guide, cold email talent buyers, band van maintenance",
     canonicalUrl: "https://www.giglizard.us/articles"
   },
   blog: {
-    title: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
+    title: "Tour Advice Playbooks & Road Wisdom (20 Articles) | GigLizard",
     description: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
     keywords: "music venue blog, diy band tour advice, live music booking tips, stage plot advice",
     canonicalUrl: "https://www.giglizard.us/articles"

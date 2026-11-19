@@ -39,7 +39,7 @@ import { fetchAllHeyCatchArticles, HEYCATCH_API_KEY } from "./utils/heycatchBlog
 import Footer from "./components/Footer";
 import gigLizardLogo from "./assets/images/giglizard_logo_hd.png";
 import { recordLiveVisit } from "./utils/analyticsStore";
-import { isBandBanned, isPerpetualPassEmail } from "./utils/accessControl";
+import { isBandBanned, isPerpetualPassEmail, normalizeUserUnlockFields, DEFAULT_FREE_UNLOCKS } from "./utils/accessControl";
 import { insertProfile, supabase, resolveAccountFromDatabase, linkAuthUidToBand } from "./lib/supabase";
 import { 
   syncLocalBandsAndVenuesToSupabase, 
@@ -341,10 +341,11 @@ export default function GigLizardApp() {
         // If stale name was email prefix 'littlerusty', fix it
         if (parsed.name === "littlerusty") {
           parsed.name = "Dr Hadit";
-          localStorage.setItem("current_user_account_v1", JSON.stringify(parsed));
         }
+        const normalizedParsed = normalizeUserUnlockFields(parsed);
+        localStorage.setItem("current_user_account_v1", JSON.stringify(normalizedParsed));
 
-        return parsed; 
+        return normalizedParsed; 
       } catch (e) { console.error(e); }
     }
     return null;
@@ -375,7 +376,7 @@ export default function GigLizardApp() {
             ? "Dr Hadit"
             : resolved.name;
 
-          const mappedAccount: UserAccount = {
+          const mappedAccount: UserAccount = normalizeUserUnlockFields({
             id: resolved.bandRecord?.id || resolved.profileRecord?.id || session.user.id,
             email: session.user.email || "",
             role: roleType,
@@ -394,16 +395,20 @@ export default function GigLizardApp() {
             website: resolved.bandRecord?.website || resolved.profileRecord?.website || resolved.profileRecord?.primary_link || undefined,
             epkUrl: resolved.bandRecord?.epk_url || resolved.profileRecord?.epk_url || undefined,
             musicUrl: resolved.bandRecord?.music_url || resolved.profileRecord?.music_url || undefined,
+            free_unlocks: typeof resolved.profileRecord?.free_unlocks === "number" ? resolved.profileRecord.free_unlocks : DEFAULT_FREE_UNLOCKS,
+            unlocked_band_ids: Array.isArray(resolved.profileRecord?.unlocked_band_ids) ? resolved.profileRecord.unlocked_band_ids : [],
             experienceLevel: resolved.bandRecord?.touring_tier
               ? (resolved.bandRecord.touring_tier.includes("National") ? "National Act" : resolved.bandRecord.touring_tier.includes("Regional") ? "Regional Tour" : "Local")
               : ((resolved.profileRecord?.experience_level as any) || "Local")
-          };
+          });
 
           const userObj = {
             ...(resolved.profileRecord || {}),
             id: session.user.id,
             email: session.user.email,
             name: finalName,
+            free_unlocks: mappedAccount.free_unlocks,
+            unlocked_band_ids: mappedAccount.unlocked_band_ids,
             isVip
           };
 
@@ -439,7 +444,7 @@ export default function GigLizardApp() {
           ? "Dr Hadit"
           : resolved.name;
 
-        const mappedAccount: UserAccount = {
+        const mappedAccount: UserAccount = normalizeUserUnlockFields({
           id: resolved.bandRecord?.id || resolved.profileRecord?.id || session.user.id,
           email: session.user.email || "",
           role: roleType,
@@ -458,16 +463,20 @@ export default function GigLizardApp() {
           website: resolved.bandRecord?.website || resolved.profileRecord?.website || resolved.profileRecord?.primary_link || undefined,
           epkUrl: resolved.bandRecord?.epk_url || resolved.profileRecord?.epk_url || undefined,
           musicUrl: resolved.bandRecord?.music_url || resolved.profileRecord?.music_url || undefined,
+          free_unlocks: typeof resolved.profileRecord?.free_unlocks === "number" ? resolved.profileRecord.free_unlocks : DEFAULT_FREE_UNLOCKS,
+          unlocked_band_ids: Array.isArray(resolved.profileRecord?.unlocked_band_ids) ? resolved.profileRecord.unlocked_band_ids : [],
           experienceLevel: resolved.bandRecord?.touring_tier
             ? (resolved.bandRecord.touring_tier.includes("National") ? "National Act" : resolved.bandRecord.touring_tier.includes("Regional") ? "Regional Tour" : "Local")
             : ((resolved.profileRecord?.experience_level as any) || "Local")
-        };
+        });
 
         const userObj = {
           ...(resolved.profileRecord || {}),
           id: session.user.id,
           email: session.user.email,
           name: finalName,
+          free_unlocks: mappedAccount.free_unlocks,
+          unlocked_band_ids: mappedAccount.unlocked_band_ids,
           isVip
         };
 
@@ -653,7 +662,7 @@ export default function GigLizardApp() {
       faq: "Tour Booking & Directory FAQ | GigLizard",
       guide: "DIY Tour Playbook - How to Book & Route Live Shows",
       verification: "Directory Verification Log & Freshness Audits | GigLizard",
-      articles: "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard",
+      articles: "Tour Advice Playbooks & Road Wisdom (20 Articles) | GigLizard",
       blog: "GigLizard Blog — Touring Strategies, Venue Insights & DIY Road Wisdom",
       privacy: "GigLizard Privacy Policy - Data Protection & Cookie Disclosures",
       contact: "Contact GigLizard - Direct Founder & Booking Support",
@@ -676,7 +685,7 @@ export default function GigLizardApp() {
       customers: "Case studies from real independent touring acts routing runs, booking club dates, and filling middle dates with GigLizard.",
       guide: "Practical DIY tour playbook for independent musicians: find bookable clubs, pitch talent buyers, coordinate co-bills, and budget van fuel.",
       verification: `Live moderation log and dated verification audits for ${venueCountStr} music venues and ${bandCountStr} active touring bands across the Lower 48.`,
-      articles: "10 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.",
+      articles: "20 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.",
       blog: "Actionable DIY touring guides, venue booking strategies, stage sound tips, and road wisdom from GigLizard.",
       privacy: "GigLizard Privacy Policy: Learn how we protect artist and venue data, and our policies on cookies, third-party advertising, and payment security.",
       contact: "Contact Little Rusty and the GigLizard team for venue moderation reports, artist support, or direct questions. Direct response within 4 hours.",
@@ -720,8 +729,8 @@ export default function GigLizardApp() {
           canonicalHref = `https://www.giglizard.us/articles/${found.slug}`;
         }
       } else {
-        pageTitle = "Tour Advice Playbooks & Road Wisdom (10 Articles) | GigLizard";
-        pageDesc = "10 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.";
+        pageTitle = "Tour Advice Playbooks & Road Wisdom (20 Articles) | GigLizard";
+        pageDesc = "20 master tour advice articles for DIY bands: route corridors, van gas budgets, cold-emailing bookers, stage plots, and midnight settlements.";
         canonicalHref = "https://www.giglizard.us/articles";
       }
     } else if (activeTab === "blog") {
@@ -1365,6 +1374,12 @@ export default function GigLizardApp() {
       };
     }
 
+    account = normalizeUserUnlockFields({
+      ...account,
+      free_unlocks: typeof account.free_unlocks === "number" ? account.free_unlocks : (typeof account.freeUnlocks === "number" ? account.freeUnlocks : DEFAULT_FREE_UNLOCKS),
+      unlocked_band_ids: Array.isArray(account.unlocked_band_ids) ? account.unlocked_band_ids : (Array.isArray(account.unlockedBandIds) ? account.unlockedBandIds : [])
+    });
+
     setCurrentAccount(account);
     setCurrentUser(prev => prev ? {
       ...prev,
@@ -1375,13 +1390,17 @@ export default function GigLizardApp() {
       bio: account.bio,
       website: account.website,
       epk_link: account.epkUrl,
-      music_link: account.musicUrl
+      music_link: account.musicUrl,
+      free_unlocks: account.free_unlocks,
+      unlocked_band_ids: account.unlocked_band_ids
     } : {
       id: account.id || "local-user",
       email: account.contactEmail,
       name: account.name,
       city: account.city,
-      role: account.type
+      role: account.type,
+      free_unlocks: account.free_unlocks,
+      unlocked_band_ids: account.unlocked_band_ids
     });
     localStorage.setItem("current_user_account_v1", JSON.stringify(account));
     
@@ -1486,6 +1505,8 @@ export default function GigLizardApp() {
       has_pa: account.hasPA,
       has_lighting: account.hasLighting,
       is_premium: account.isPremium,
+      free_unlocks: account.free_unlocks ?? DEFAULT_FREE_UNLOCKS,
+      unlocked_band_ids: account.unlocked_band_ids ?? [],
       password: account.password
     }).catch(err => console.warn("Supabase profile sync error in App.tsx:", err));
   };
@@ -1506,16 +1527,26 @@ export default function GigLizardApp() {
   };
 
   const handleUpdateAccount = (account: UserAccount) => {
-    setCurrentAccount(account);
-    localStorage.setItem("current_user_account_v1", JSON.stringify(account));
-    const identId = account.id || (account.contactEmail ? "usr_" + btoa(account.contactEmail.toLowerCase()).replace(/=+$/, "") : "usr_anon");
+    const normalized = normalizeUserUnlockFields(account);
+    setCurrentAccount(normalized);
+    setCurrentUser((prev: any) =>
+      prev
+        ? {
+            ...prev,
+            free_unlocks: normalized.free_unlocks,
+            unlocked_band_ids: normalized.unlocked_band_ids
+          }
+        : prev
+    );
+    localStorage.setItem("current_user_account_v1", JSON.stringify(normalized));
+    const identId = normalized.id || (normalized.contactEmail ? "usr_" + btoa(normalized.contactEmail.toLowerCase()).replace(/=+$/, "") : "usr_anon");
     if (identId) {
       analytics.setIdentity(
         identId,
         {
-          email: account.email || account.contactEmail || "",
-          name: account.name || "Musician",
-          plan: account.hasPaidAccess ? "pro" : "free",
+          email: normalized.email || normalized.contactEmail || "",
+          name: normalized.name || "Musician",
+          plan: normalized.hasPaidAccess ? "pro" : "free",
         }
       );
     }
